@@ -117,7 +117,7 @@ Indicator bag-of-words maps a document to a \(V\)-dimensional vector whose entri
 
 Count bag-of-words uses token counts instead of binary indicators.
 
-\textbf{TF-IDF.} The lecture motivates downweighting common function words.
+\textbf{Term frequency-inverse document frequency (TF-IDF).} The lecture motivates downweighting common function words. Here \(\operatorname{TF}\) denotes term frequency and \(\operatorname{IDF}\) inverse document frequency.
 \[
 \operatorname{TF}(w,d) = \text{count of } w \text{ in document } d
 \]
@@ -136,7 +136,7 @@ p(y \mid x) = \frac{\exp\!\left(u_y^\top w_x\right)}
 \]
 This predicts a context word \(y\) from a center word \(x\).
 
-\textbf{CBOW model.} Predict a target word from a set of context words:
+\textbf{Continuous bag-of-words (CBOW) model.} Predict a target word from a set of context words:
 \[
 p(y \mid x) = \frac{\exp\!\left(u_y^\top \left(\frac{1}{|x|}\sum_{x_i \in x} w_{x_i}\right)\right)}
 {\sum_{y' \in V} \exp\!\left(u_{y'}^\top \left(\frac{1}{|x|}\sum_{x_i \in x} w_{x_i}\right)\right)}.
@@ -157,7 +157,7 @@ then
 \]
 Thus co-occurring words and contexts are pulled together in embedding space, while non-co-occurring pairs are pushed apart.
 
-\textbf{PMI connection.} For skip-gram and related embedding schemes, the learned embeddings approximately satisfy
+\textbf{Pointwise mutual information (PMI) connection.} For skip-gram and related embedding schemes, the learned embeddings approximately satisfy
 \[
 u_y^\top w_x \approx \log \frac{p(x,y)}{p(x)p(y)} - c
 \]

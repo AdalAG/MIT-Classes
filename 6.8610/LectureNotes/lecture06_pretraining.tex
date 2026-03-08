@@ -45,7 +45,7 @@ Fine-tuning is the process of continuing training from a pretrained initializati
     \item \textbf{In-context learning:} the ability to infer a task from examples or input-output pairs placed directly in the prompt; this can emerge from pretraining but can also be explicitly strengthened.
     \item \textbf{Refusal / unlearning:} a major goal of post-pretraining adaptation is to disable undesirable outputs, though in practice this often behaves more like \emph{refusal} than genuine forgetting.
     \item \textbf{Continued pretraining:} keep training on in-domain unlabeled text before or alongside downstream supervised fine-tuning.
-    \item \textbf{Synthetic fine-tuning data:} use a stronger model to generate QA pairs, instructions, or additional domain documents when human-labeled data is scarce.
+    \item \textbf{Synthetic fine-tuning data:} use a stronger model to generate question-answer (QA) pairs, instructions, or additional domain documents when human-labeled data is scarce.
     \item \textbf{Data mixing:} pretraining corpora are engineered mixtures, not just arbitrary web scrapes.
     \item \textbf{Quality filtering:} remove low-quality or harmful text and keep samples that resemble trusted sources.
     \item \textbf{Parameter-efficient fine-tuning (PEFT):} adapt only a small subset of model parameters, such as bias terms or layer-normalization parameters, while leaving the rest frozen.
@@ -53,7 +53,7 @@ Fine-tuning is the process of continuing training from a pretrained initializati
 \end{itemize}
 
 \subsection{Core Models and Equations}
-\textbf{Transfer-learning pipeline.} Let \(D_{\mathrm{PT}}\) be a pretraining corpus and \(D_{\mathrm{FT}}\) a downstream dataset. A standard abstraction is
+\textbf{Transfer-learning pipeline.} Let \(D_{\mathrm{PT}}\) be a pretraining (PT) corpus and \(D_{\mathrm{FT}}\) a fine-tuning (FT) downstream dataset. A standard abstraction is
 \[
 \theta_{\mathrm{PT}}
 =

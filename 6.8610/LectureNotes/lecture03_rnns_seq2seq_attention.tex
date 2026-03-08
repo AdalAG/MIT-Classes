@@ -55,7 +55,7 @@ A \textbf{word token} is a specific occurrence of a word in text, while a \textb
     \item \textbf{Teacher forcing:} during training, the model receives the true previous token rather than its own predicted token.
     \item \textbf{Backpropagation through time (BPTT):} training an RNN requires propagating gradients backward through the unrolled sequence.
     \item \textbf{Truncated BPTT:} for efficiency, backpropagation may be limited to a finite recent window while the forward pass still carries recurrent state.
-    \item \textbf{Seq2Seq:} use one RNN as an encoder for the source sequence and another as a decoder for the target sequence.
+    \item \textbf{Sequence-to-sequence (Seq2Seq):} use one RNN as an encoder for the source sequence and another as a decoder for the target sequence.
     \item \textbf{Attention:} let each decoder step compute a weighted summary of all encoder hidden states, rather than relying only on the final encoder state.
 \end{itemize}
 
@@ -81,7 +81,7 @@ with initial state typically set to
 h_0 = \mathbf{0}.
 \]
 
-\textbf{Cross-entropy loss at each timestep.}
+\textbf{Cross-entropy (CE) loss at each timestep.}
 \[
 \operatorname{CE}(y_t,\hat{y}_t) = - \sum_{j \in V} y_{t,j}\log \hat{y}_{t,j}
 \]
@@ -191,11 +191,11 @@ with a separate translation model and target-language model. Neural machine tran
 
 \textbf{5. RNN generation}
 \begin{itemize}
-    \item Begin with a special start token such as \texttt{<START>} or \texttt{<BOS>}.
+    \item Begin with a special start token such as \texttt{<START>} or the beginning-of-sequence token \texttt{<BOS>}.
     \item Produce a distribution over the next token from \(\hat{y}_1\).
     \item Sample or choose the next token.
     \item Feed that generated token back in as the next input.
-    \item Continue until generating an end token such as \texttt{<EOS>}.
+    \item Continue until generating an end-of-sequence token such as \texttt{<EOS>}.
 \end{itemize}
 
 \textbf{6. Seq2Seq translation}
@@ -223,7 +223,7 @@ with a separate translation model and target-language model. Neural machine tran
     \item \textbf{Using bytes directly is possible but often an unnecessary uphill battle.} The professor emphasized that byte-level modeling makes meaning harder to recover because single bytes are not natural semantic units.
     \item \textbf{Teacher forcing is not a minor implementation detail.} During training, feeding model predictions back into the decoder too early would mean learning from garbage outputs instead of the correct target sequence.
     \item \textbf{Truncated BPTT does not mean truncated forward memory.} The model still carries recurrent state forward through long sequences; only the gradient computation is cut off.
-    \item \textbf{LSTMs were a pragmatic architectural repair.} They preserve the high-level RNN idea but add gating mechanisms to better preserve long-range information and mitigate vanishing gradients.
+    \item \textbf{Long short-term memory (LSTM) networks were a pragmatic architectural repair.} They preserve the high-level RNN idea but add gating mechanisms to better preserve long-range information and mitigate vanishing gradients.
     \item \textbf{Basic seq2seq has a severe bottleneck.} Expecting one final encoder vector to store the entire meaning of a sentence is ``wild,'' even if it works surprisingly well with enough data.
     \item \textbf{Attention is named well because it formalizes selective focus.} Instead of freezing all meaning into one vector, the decoder can revisit the source and decide what matters at each output step.
     \item \textbf{Attention is useful but not a perfect explanation of model behavior.} Attention heatmaps are informative, but they should not be mistaken for full causal interpretability.

@@ -55,7 +55,7 @@ where \(x_{1:T} = (x_1, x_2, \dots, x_T)\) is a token sequence and \(\theta\) de
         \item \textbf{Representation}: how symbolic language is converted into a form a computer can process.
         \item \textbf{Modeling}: how those representations are used to solve a task or estimate a probability distribution.
     \end{itemize}
-    \item \textbf{NLP historically consisted of many specialized tasks.} These include syntax-focused tasks (morphology, part-of-speech tagging, parsing), discourse tasks (summarization, coreference), and semantic tasks (sentiment, NER, QA, machine translation, language modeling).
+    \item \textbf{NLP historically consisted of many specialized tasks.} These include syntax-focused tasks (morphology, part-of-speech tagging, parsing), discourse tasks (summarization, coreference), and semantic tasks (sentiment, named entity recognition (NER), question answering (QA), machine translation, language modeling).
     \item \textbf{Modern NLP increasingly unifies tasks under language modeling.} If a model can produce or condition on text well enough to follow instructions, many traditional NLP tasks become special cases of text generation or conditional prediction.
 \end{itemize}
 
@@ -76,13 +76,13 @@ Often, the training corpus is viewed as one very long token sequence obtained by
 \[
 p_\theta(x_{1:T}) = \prod_{t=1}^{T} p_\theta(x_t \mid x_{1:t-1})
 \]
-This left-to-right factorization is the dominant paradigm in modern large language models.
+This left-to-right factorization is the dominant paradigm in modern large language models (LLMs).
 
 \textbf{Alternative factorizations.} The lecture notes that the joint distribution can also be factorized in other ways, for example:
 \[
 p_\theta(x_{1:T}) = \prod_{t=1}^{T} p_\theta(x_t \mid x_{t+1:T})
 \]
-for right-to-left generation, or via latent-variable models such as HMM-style models or diffusion-based formulations.
+for right-to-left generation, or via latent-variable models such as hidden Markov model (HMM)-style models or diffusion-based formulations.
 
 \textbf{Conditional language modeling.} Many downstream tasks can be reframed as learning:
 \[
@@ -96,7 +96,7 @@ This viewpoint underlies sequence-to-sequence learning for tasks such as transla
 \]
 which is exponential in sequence length. This is why direct table lookup does not scale and function approximation is required.
 
-\textbf{Perplexity.} A standard intrinsic evaluation metric for language models is
+\textbf{Perplexity (PPL).} A standard intrinsic evaluation metric for language models is
 \[
 \operatorname{PPL}(x_{1:T}) = \exp\left(-\frac{1}{T}\log p_\theta(x_{1:T})\right)
 \]
@@ -123,7 +123,7 @@ Perplexity can be interpreted as the model's \textbf{average branching factor}; 
 \textbf{Generic supervised NLP pipeline}
 \begin{itemize}
     \item Start with input data \(X\) and desired outputs \(Y\).
-    \item Choose a model family \(f_\theta\): rule-based, CRF, HMM, graphical model, neural network, or another structured predictor.
+    \item Choose a model family \(f_\theta\): rule-based, conditional random field (CRF), HMM, graphical model, neural network, or another structured predictor.
     \item Fit parameters to data so that the model maps \(X\) to useful outputs \(Y\).
     \item Evaluate according to the application: accuracy, robustness, fairness, latency, or human usefulness.
 \end{itemize}
@@ -200,7 +200,7 @@ As the opening lecture, this class session establishes the conceptual frame for 
 
 \begin{itemize}
     \item The distinction between \textbf{representation} and \textbf{modeling} foreshadows later lectures on tokenization, architectures, pretraining, post-training, and ranking.
-    \item The shift from many specialized models to unified \textbf{language modeling} motivates why later lectures focus on log-linear models, RNNs, sequence-to-sequence models, attention, Transformers, and modern LLM training.
+    \item The shift from many specialized models to unified \textbf{language modeling} motivates why later lectures focus on log-linear models, recurrent neural networks (RNNs), sequence-to-sequence models, attention, Transformers, and modern LLM training.
     \item The introduction of \textbf{perplexity} prepares for later discussions of evaluation, scaling, and why intrinsic metrics do not fully capture downstream usefulness.
     \item The lecture also connects directly to standard machine-learning prerequisites: maximum likelihood, supervised learning, generalization, and parameterized function approximation.
 \end{itemize}

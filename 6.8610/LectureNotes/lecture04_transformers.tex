@@ -26,8 +26,8 @@ The lecture introduces the \textbf{Transformer} as the architecture that turned 
     \item In Lecture 3, attention improved seq2seq models by letting a decoder look back at all encoder states instead of compressing the source sentence into one vector.
     \item The next step is to ask whether attention itself can do most of the modeling work.
     \item We want each token to build a rich context-dependent representation by deciding how much to use information from every other token in the same sequence.
-    \item We also want a model that is highly parallelizable, unlike RNNs whose hidden states must be computed sequentially.
-    \item This leads to self-attention, Transformer encoders, Transformer decoders, and practical pretrained systems such as BERT and GPT-2.
+    \item We also want a model that is highly parallelizable, unlike recurrent neural networks (RNNs) whose hidden states must be computed sequentially.
+    \item This leads to self-attention, Transformer encoders, Transformer decoders, and practical pretrained systems such as Bidirectional Encoder Representations from Transformers (BERT) and Generative Pre-trained Transformer (GPT) variants such as GPT-2.
 \end{itemize}
 
 \subsection{Key Concepts}
@@ -91,7 +91,7 @@ then the entire attention head can be written as
 = \operatorname{softmax}\!\left(\frac{QK^\top}{\sqrt{d_k}}\right)V.
 \]
 
-\textbf{Multi-head attention.} For head \(h\),
+\textbf{Multi-head attention (MHA).} For head \(h\),
 \[
 \text{head}_h = \operatorname{Attention}(QW_Q^{(h)}, KW_K^{(h)}, VW_V^{(h)}).
 \]
@@ -100,7 +100,7 @@ The heads are concatenated and linearly combined:
 \operatorname{MHA}(Q,K,V) = \operatorname{Concat}(\text{head}_1,\dots,\text{head}_H)W_O.
 \]
 
-\textbf{Feed-forward sublayer.} After attention, each token representation is passed through a position-wise feed-forward network:
+\textbf{Feed-forward neural network (FFNN) sublayer.} After attention, each token representation is passed through a position-wise feed-forward network:
 \[
 \operatorname{FFNN}(z_i) = W_2 \,\sigma(W_1 z_i + b_1) + b_2.
 \]
@@ -127,7 +127,7 @@ r_t^{\text{pre}} = f(\operatorname{LayerNorm}(z_t)) + z_t,
 r_t^{\text{post}} = \operatorname{LayerNorm}(f(z_t) + z_t).
 \]
 
-\textbf{Positional encodings.} The original Transformer adds a positional vector \(p_i\) to each token embedding:
+\textbf{Positional encodings (PE).} The original Transformer adds a positional vector \(p_i\) to each token embedding:
 \[
 x_i' = x_i + p_i.
 \]
@@ -254,7 +254,7 @@ This preserves autoregressive generation.
     \item \textbf{Permutation-invariance warning:} without positional encodings, self-attention behaves too much like a bag of words. Reordering tokens does not by itself encode the correct sequence order.
     \item \textbf{Machine translation:} the lecture used English-to-Czech translation to motivate Transformer decoders, masked self-attention, and cross-attention.
     \item \textbf{BERT masked-LM training:} a sentence such as ``The brown dog ran'' can be turned into ``The \texttt{[MASK]} dog ran,'' and the encoder must recover the original token from context.
-    \item \textbf{Sentence-pair classification with BERT:} the \texttt{[CLS]} token can be used as a summary representation for tasks with one label per input sequence or per sentence pair.
+    \item \textbf{Sentence-pair classification with BERT:} the classification token \texttt{[CLS]} can be used as a summary representation for tasks with one label per input sequence or per sentence pair.
     \item \textbf{Token-level prediction with BERT:} downstream tasks such as tagging can use the contextualized representation at each output position rather than a single global representation.
     \item \textbf{Causal masking in GPT-style models:} when generating token \(t\), the model is allowed to look at tokens \(1,\dots,t-1\) but not at future tokens \(t+1,\dots,n\).
 \end{itemize}

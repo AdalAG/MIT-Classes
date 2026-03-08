@@ -42,7 +42,7 @@ Extrinsic evaluation measures how well a model helps accomplish a real task, suc
     \item \textbf{Cool demos:} evaluate whether a system can visibly perform a target task at all. Demos can be motivating and meaningful, but they are also easy to overfit.
     \item \textbf{Forced-choice evaluation:} convert a task into multiple-choice, true/false, or other constrained outputs so scoring is straightforward.
     \item \textbf{Human evaluation:} ask people to rate or rank outputs. This remains the gold standard for many generative tasks, but it is expensive and noisy.
-    \item \textbf{Formal metrics:} use automatic functions such as perplexity, BLEU, ROUGE, or BERTScore to compare predictions with references.
+    \item \textbf{Formal metrics:} use automatic functions such as perplexity, Bilingual Evaluation Understudy (BLEU), Recall-Oriented Understudy for Gisting Evaluation (ROUGE), or BERTScore, which uses contextual embeddings from Bidirectional Encoder Representations from Transformers (BERT), to compare predictions with references.
     \item \textbf{LM-as-a-judge:} use a stronger language model to score or compare outputs, often with access to the prompt, a reference answer, a checklist, or external tools.
     \item \textbf{Representative data:} the evaluation set must resemble the real deployment problem closely enough to support the claim being made.
     \item \textbf{Inter-annotator disagreement:} humans do not always agree, especially on nuanced judgments involving style, fluency, truthfulness, or preference.
@@ -82,7 +82,7 @@ Thus the held-out log-likelihood only suffers a constant penalty, even though th
 \frac{\#(\text{\(n\)-grams in reference and prediction})}
 {\#(\text{\(n\)-grams in prediction})}.
 \]
-The standard BLEU score combines multiple \emph{n}-gram precisions with a brevity penalty:
+The standard BLEU score combines multiple \emph{n}-gram precisions with a brevity penalty (BP):
 \[
 \operatorname{BLEU}
 =
@@ -194,7 +194,7 @@ This metric is simple, but the lecture stressed that \emph{elicitation procedure
     \item \textbf{LM1/LM2/LM3 thought experiment:} a model that occasionally emits garbage may still not look as terrible as expected under held-out log-likelihood, illustrating the limits of perplexity.
     \item \textbf{SHRDLU:} an impressive classic demo system that worked because it operated in a tiny, closed-world domain with hand-built grammars and semantics.
     \item \textbf{GPT-2 and Google Glass:} both were used to separate technical capability from broader questions about product success, social acceptance, and long-term progress.
-    \item \textbf{SuperGLUE and Humanity's Last Exam:} benchmark examples showing the appeal of forced-choice evaluation and the dangers of overfitting to one public evaluation set.
+    \item \textbf{SuperGLUE, a successor to the General Language Understanding Evaluation (GLUE) benchmark, and Humanity's Last Exam:} benchmark examples showing the appeal of forced-choice evaluation and the dangers of overfitting to one public evaluation set.
     \item \textbf{Machine translation:} a reference translation and a predicted translation were used to motivate formal similarity metrics such as BLEU and ROUGE.
     \item \textbf{Representative-data problem:} Europarl parliamentary proceedings versus Haitian crisis messages illustrated that a training or evaluation corpus can be technically rich yet socially unrepresentative of the intended use case.
     \item \textbf{Checklist judging:} an LM judge can be asked whether an answer satisfies requirements such as listing Airbnbs in Singapore, ensuring accommodations fit two people, and respecting a price ceiling.
