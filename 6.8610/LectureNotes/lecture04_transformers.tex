@@ -44,12 +44,26 @@ Self-attention is a mechanism in which each token in a sequence computes how muc
         \item The \textbf{value} contains the information that is actually passed forward once attention weights are decided.
     \end{itemize}
     \item \textbf{Scaled dot-product attention:} token-to-token similarity is computed by a dot product between a query and keys, scaled before a softmax.
+    \item \textbf{Three ways to attend:}
+    \begin{itemize}
+        \item \textbf{Self-attention:} operate on one sequence and decide how much each token should attend to the other tokens in that same sequence.
+        \item \textbf{Masked self-attention:} still operate on one sequence, but forbid attention to future positions so the model remains autoregressive.
+        \item \textbf{Cross-attention:} use one sequence to attend to another, as in an encoder-decoder model.
+    \end{itemize}
     \item \textbf{Residual connections and layer normalization:} these stabilize deep networks and help preserve useful signal through many layers.
     \item \textbf{Positional encodings:} plain self-attention is permutation-invariant, so token order must be injected explicitly.
     \item \textbf{Multi-head attention:} multiple independent attention heads let the model capture different relationships in parallel.
     \item \textbf{Transformer encoder:} a block consisting of multi-head self-attention, a feed-forward network, residual connections, and layer normalization.
     \item \textbf{Transformer decoder:} similar to an encoder, but it uses masked self-attention and, in encoder-decoder settings, an additional cross-attention sublayer.
-    \item \textbf{Pretraining and transfer:} Transformer encoders can be pretrained on unlabeled text and then fine-tuned for labeled downstream tasks.
+    \item \textbf{Types of learning:}
+    \begin{itemize}
+        \item \textbf{Supervised learning:} train on labeled inputs and outputs for a specific task.
+        \item \textbf{Unsupervised / self-supervised learning:} train on unlabeled text by deriving targets from the data itself, such as predicting masked or future tokens.
+        \item \textbf{Semi-supervised learning:} combine a small amount of labeled data with a larger amount of unlabeled data.
+        \item \textbf{Multi-task learning:} train a shared model on multiple tasks.
+        \item \textbf{Transfer learning:} learn useful capabilities on one task or domain and reuse them on another.
+        \item \textbf{Pretraining:} the first stage of transfer learning, usually on a broad unlabeled corpus before downstream adaptation.
+    \end{itemize}
 \end{itemize}
 
 \subsection{Core Models and Equations}
@@ -156,6 +170,17 @@ M_{ij} =
 \]
 This preserves autoregressive generation.
 
+\textbf{Cross-attention.} In an encoder-decoder Transformer, decoder states query the encoder outputs:
+\[
+Q^{dec} = H^{dec} W_Q, \qquad K^{enc} = H^{enc} W_K, \qquad V^{enc} = H^{enc} W_V,
+\]
+\[
+\operatorname{CrossAttention}(Q^{dec}, K^{enc}, V^{enc})
+=
+\operatorname{softmax}\!\left(\frac{Q^{dec}(K^{enc})^\top}{\sqrt{d_k}}\right)V^{enc}.
+\]
+The lecture explicitly distinguished this from decoder self-attention: in cross-attention, the queries come from the current decoder layer, while the keys and values come from the encoder outputs.
+
 \textbf{BERT objectives.}
 \begin{itemize}
     \item \textbf{Masked language modeling:}
@@ -201,6 +226,7 @@ This preserves autoregressive generation.
 \textbf{4. BERT pretraining}
 \begin{itemize}
     \item Use only Transformer encoders.
+    \item Treat the setup as self-supervised pretraining: the corpus is unlabeled, and the prediction targets are created from the text itself.
     \item Select 15\% of tokens for the masked language-model objective.
     \item Of those selected tokens, replace 80\% with \texttt{[MASK]}, 10\% with a random token, and leave 10\% unchanged.
     \item Train the model to predict the original selected tokens.
@@ -210,6 +236,7 @@ This preserves autoregressive generation.
 \textbf{5. BERT fine-tuning}
 \begin{itemize}
     \item Keep the pretrained encoder stack.
+    \item Treat this as supervised transfer learning: start from pretrained weights, then adapt on a smaller labeled task dataset.
     \item Replace the top prediction layer with a task-specific head.
     \item Feed downstream inputs using the same tokenization as in pretraining.
     \item Often freeze many BERT weights initially, then gradually unfreeze or fine-tune more of them.
@@ -242,6 +269,8 @@ This preserves autoregressive generation.
     \item \textbf{Positional encodings should be understood by their design goals more than by memorizing one formula.} The important desiderata are order information, relative-position cues, and the ability to generalize beyond lengths seen during training.
     \item \textbf{Multi-head attention gives the model multiple chances to discover structure.} Different heads can specialize in different patterns, such as local syntax, long-range dependencies, or punctuation-sensitive behavior.
     \item \textbf{BERT is primarily for representation learning, not free-form generation.} The lecture repeatedly contrasted encoder-only models, which excel at contextualized embeddings and classification, with decoder-only models, which are used to generate text.
+    \item \textbf{What Lecture 3 called ``attention'' is specifically cross-attention in Transformer language.} The professor stressed that once both self-attention and cross-attention exist, the generic word ``attention'' becomes ambiguous.
+    \item \textbf{Labels are scarce, so pretraining is the practical answer.} The motivation for BERT fine-tuning was not just elegance; it was that self-supervised pretraining on unlabeled text makes later supervised learning feasible when task labels are limited.
 \end{itemize}
 
 \subsection{Examples}
@@ -257,6 +286,7 @@ This preserves autoregressive generation.
     \item \textbf{Sentence-pair classification with BERT:} the classification token \texttt{[CLS]} can be used as a summary representation for tasks with one label per input sequence or per sentence pair.
     \item \textbf{Token-level prediction with BERT:} downstream tasks such as tagging can use the contextualized representation at each output position rather than a single global representation.
     \item \textbf{Causal masking in GPT-style models:} when generating token \(t\), the model is allowed to look at tokens \(1,\dots,t-1\) but not at future tokens \(t+1,\dots,n\).
+    \item \textbf{Three ways to attend:} self-attention operates within one sequence, masked self-attention does the same with future positions blocked, and cross-attention lets a decoder attend to a separate encoder sequence.
 \end{itemize}
 
 \subsection{Common Pitfalls / Limitations}
@@ -295,11 +325,13 @@ This preserves autoregressive generation.
     \item A Transformer encoder block consists of multi-head self-attention, residual connections, layer normalization, and a feed-forward network.
     \item Positional encodings are necessary because self-attention alone is permutation-invariant.
     \item Multi-head attention lets different heads capture different relations in parallel.
+    \item Types of learning discussed in this lecture include supervised, unsupervised/self-supervised, semi-supervised, multi-task, and transfer learning; pretraining is the first stage of transfer learning.
     \item Standard self-attention is \(O(n^2)\) in sequence length, but it is still highly practical because the computations are parallelizable.
     \item BERT is an encoder-only Transformer pretrained with masked language modeling and, in the original version, next sentence prediction.
+    \item BERT pretraining is self-supervised on unlabeled text; BERT fine-tuning is supervised transfer learning on a labeled downstream task.
     \item Original BERT masking rule: choose 15\% of tokens; of those, 80\% become \texttt{[MASK]}, 10\% become random tokens, and 10\% stay unchanged.
     \item BERT is typically fine-tuned by attaching a task-specific head while preserving the pretrained encoder.
-    \item A Transformer decoder uses \textbf{masked self-attention}; an encoder-decoder Transformer also uses \textbf{cross-attention}.
+    \item A Transformer decoder uses \textbf{masked self-attention}; an encoder-decoder Transformer also uses \textbf{cross-attention}, where decoder queries attend to encoder keys and values.
     \item GPT-2 is decoder-only: it generates text autoregressively and does not use encoder-side cross-attention.
 \end{itemize}
 

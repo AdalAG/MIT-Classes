@@ -50,6 +50,7 @@ A \textbf{word token} is a specific occurrence of a word in text, while a \textb
         \item no natural parameter sharing across positions,
         \item effectively bag-of-words unless position is encoded explicitly.
     \end{itemize}
+    \item \textbf{Masked vs.\ autoregressive feed-forward modeling:} with a fixed window, a feed-forward network can either predict a missing token from surrounding context or predict the next token from only the left context. The autoregressive version is the one that directly defines a left-to-right sequence model.
     \item \textbf{RNN core idea:} use the previous hidden state together with the current input to compute the new hidden state.
     \item \textbf{Hidden state as meaning summary:} the hidden representation is meant to encode the meaning of the sequence seen so far.
     \item \textbf{Teacher forcing:} during training, the model receives the true previous token rather than its own predicted token.
@@ -68,6 +69,19 @@ h = \phi(WX + b_h)
 \hat{y} = \operatorname{softmax}(Uh + b_y)
 \]
 This allows nonlinear combination of a fixed window, but it does not maintain sequential state.
+
+\textbf{Feed-forward masked vs.\ autoregressive objectives.} With a fixed-size window, one can train the same feed-forward architecture in two different ways:
+\begin{itemize}
+    \item \textbf{Masked language modeling:} hide a token and predict it from both left and right context,
+    \[
+    p_\theta(x_t \mid x_{t-k:t-1}, x_{t+1:t+k}).
+    \]
+    \item \textbf{Autoregressive language modeling:} predict the next token from only the previous context,
+    \[
+    p_\theta(x_t \mid x_{t-k:t-1}).
+    \]
+\end{itemize}
+The lecture explicitly contrasted these two views: a masked objective can learn useful contextual representations, but only the autoregressive formulation directly supports a normalized left-to-right probability for the whole sequence \(p(x_{1:T})\).
 
 \textbf{Basic RNN update.} For input embedding \(x_t\), hidden state \(h_t\), and output distribution \(\hat{y}_t\),
 \[
@@ -129,6 +143,23 @@ e_{t,i} = \operatorname{score}(h^{dec}_t, h^{enc}_i)
 \]
 where the score function can be a feed-forward network, a dot product, or another learned similarity function.
 
+\textbf{Popular attention scoring functions.} Common choices include:
+\begin{itemize}
+    \item \textbf{Additive / concat scoring:}
+    \[
+    e_{t,i} = v_a^\top \tanh\!\left(W_a [h^{dec}_t; h^{enc}_i]\right).
+    \]
+    \item \textbf{Bilinear / general scoring:}
+    \[
+    e_{t,i} = (h^{dec}_t)^\top W_a h^{enc}_i.
+    \]
+    \item \textbf{Dot-product scoring:}
+    \[
+    e_{t,i} = (h^{dec}_t)^\top h^{enc}_i.
+    \]
+\end{itemize}
+The transcript emphasized the tradeoff between flexibility and efficiency: more expressive learned scorers are possible, but dot-product scoring became especially attractive because it is simple, fast, and works well at scale.
+
 \textbf{Attention weights.}
 \[
 a_{t,i} = \frac{\exp(e_{t,i})}{\sum_{j=1}^{N}\exp(e_{t,j})}
@@ -154,12 +185,14 @@ p(y \mid x) \propto p(x \mid y)p(y)
 with a separate translation model and target-language model. Neural machine translation replaced this pipeline with a single end-to-end encoder-decoder model.
 
 \subsection{Algorithms / Architectures}
-\textbf{1. Feed-forward next-token prediction}
+\textbf{1. Feed-forward masked and autoregressive prediction}
 \begin{itemize}
     \item Choose a fixed-size context window.
-    \item Convert the window into embeddings or a fixed feature vector.
+    \item For a masked objective, remove one token and predict it from its surrounding context.
+    \item For an autoregressive objective, keep only the left context and predict the next token.
+    \item Convert the visible context into embeddings or a fixed feature vector.
     \item Pass it through one or more feed-forward layers.
-    \item Predict the next token with a softmax.
+    \item Predict the target token with a softmax over the vocabulary.
     \item Repeat with a sliding window over the corpus.
 \end{itemize}
 
@@ -227,6 +260,7 @@ with a separate translation model and target-language model. Neural machine tran
     \item \textbf{Basic seq2seq has a severe bottleneck.} Expecting one final encoder vector to store the entire meaning of a sentence is ``wild,'' even if it works surprisingly well with enough data.
     \item \textbf{Attention is named well because it formalizes selective focus.} Instead of freezing all meaning into one vector, the decoder can revisit the source and decide what matters at each output step.
     \item \textbf{Attention is useful but not a perfect explanation of model behavior.} Attention heatmaps are informative, but they should not be mistaken for full causal interpretability.
+    \item \textbf{The exact attention scorer is a design choice.} The professor noted that one can use an MLP-style scorer, a dot product, or a linear transformation, but speed matters because the score is computed many times; in practice, simple dot-product forms often win.
 \end{itemize}
 
 \subsection{Examples}
@@ -283,6 +317,7 @@ with a separate translation model and target-language model. Neural machine tran
 \begin{itemize}
     \item \textbf{Word token vs.\ word type:} RNN hidden states are contextualized token representations; word2vec embeddings are type-based.
     \item \textbf{Feed-forward LM weakness:} fixed window, no memory, poor parameter efficiency as context grows.
+    \item \textbf{Feed-forward masked vs.\ autoregressive modeling:} masked prediction can learn contextual representations from both sides of a token, while autoregressive prediction models the next token from the left context and directly supports sequence probabilities.
     \item \textbf{Basic RNN equations:}
     \[
     h_t = f(Wx_t + Vh_{t-1} + b_h), \qquad
@@ -304,6 +339,7 @@ with a separate translation model and target-language model. Neural machine tran
     \item \textbf{RNN weaknesses:} slow training, poor parallelism, vanishing/exploding gradients, limited practical use of very long context.
     \item \textbf{Seq2Seq:} encoder reads the source sequence, decoder generates the target sequence.
     \item \textbf{Basic seq2seq bottleneck:} all source meaning must pass through the final encoder hidden state.
+    \item \textbf{Popular attention scoring functions:} additive/concat, bilinear/general, and dot product.
     \item \textbf{Attention equations:}
     \[
     e_{t,i} = \operatorname{score}(h^{dec}_t, h^{enc}_i), \qquad
