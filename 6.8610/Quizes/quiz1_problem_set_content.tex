@@ -1,0 +1,476 @@
+\usepackage[top=2cm, bottom=2.5cm, left=2.5cm, right=2.5cm]{geometry}
+\usepackage{amsmath, amssymb, amsfonts, mathtools}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{framed}
+\usepackage{enumitem}
+\usepackage{array}
+\usepackage{xparse}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue,
+  citecolor=blue,
+  urlcolor=blue
+}
+
+\definecolor{shadecolor}{gray}{0.92}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.7em}
+\setlist[enumerate]{itemsep=0.5em, topsep=0.5em}
+\renewcommand{\arraystretch}{1.15}
+
+\newcommand{\course}{6.8610 Graduate NLP}
+\newcommand{\term}{Spring 2026}
+\newcommand{\softmax}{\mathrm{softmax}}
+
+\NewDocumentCommand{\solution}{O{4\baselineskip} +m}{%
+  \ifshowsolutions
+    \begin{shaded}
+    \noindent\textbf{Solution. }#2
+    \end{shaded}
+  \else
+    %\noindent\textbf{Solution. }\textit{Masked in this version.}
+    \vspace*{#1}
+  \fi
+}
+
+\begin{document}
+
+\begin{center}
+{\LARGE \textbf{6.8610 Quiz 1 Problem Set}}\\
+\term\\
+\ifshowsolutions
+\textbf{Solutions Version}\\
+\else
+\textbf{Masked-Solutions Version}\\
+\fi
+Adapted from prior midterms and practice exams, filtered to the current Quiz 1 scope.
+\end{center}
+
+\textbf{Coverage note.} The provided past exams contained many in-scope questions for Lectures 1--4 and a small amount of overlap with Lecture 6 through pretraining/fine-tuning concept checks. They did not contain clear in-scope questions for Lecture 5 evaluation or Lecture 7 scaling laws, so those topics are not represented here.
+
+\section*{Problem 1: Language Models, Perplexity, and Seq2Seq}
+\textit{Adapted from prior short-answer and language-model sections.}
+
+\begin{enumerate}[label=(\alph*)]
+\item \textbf{True or False.} Perplexity scores may be negative.
+\solution{False. Perplexity is
+\[
+\operatorname{PPL}(x_{1:T}) = \exp\left(-\frac{1}{T}\log p(x_{1:T})\right),
+\]
+so it is always strictly positive. It can be interpreted as an average branching factor.}
+
+\item Would you expect a unigram language model to yield a \textbf{higher}, \textbf{equal}, or \textbf{lower} perplexity than a uniform model on the same corpus? Briefly explain.
+\solution{Lower. A unigram maximum-likelihood estimate places more probability mass on frequent tokens than a uniform model does, so it achieves lower average negative log-likelihood on the observed corpus and therefore lower perplexity.}
+
+\item Bob argues that an autoregressive RNN language model is ``bad'' because \(p(x_t \mid x_{<t}) < 1\) for every token, so the model must always assign higher probability to short incomplete strings like ``the cat'' than to longer complete strings like ``the cat meows.'' Is Bob correct? Briefly explain.
+\solution{No. Sentence probabilities should include the end-of-sentence token as part of the sequence. A model can assign low probability to ending after ``the cat'' and much higher probability to continuing with ``meows'' and then stopping, so the complete sentence can still receive higher total probability.}
+
+\item English uses gendered pronouns such as ``he'' and ``she.'' Define a variant called \emph{Englio} that replaces every occurrence of ``he'' and ``she'' with a single pronoun ``o.'' Answer each subpart briefly.
+\begin{enumerate}[label=(\roman*)]
+\item Under a \textbf{uniform} language model, would pronoun perplexity in Englio be higher, lower, or the same as in English?
+\item Under a \textbf{unigram} language model, would pronoun perplexity in Englio be higher, lower, or the same as in English?
+\item If we train a seq2seq model to translate English \(\to\) Englio, can test perplexity ever reach \(1\)?
+\item If we train a seq2seq model to translate Englio \(\to\) English, can test perplexity ever reach \(1\)?
+\end{enumerate}
+\solution[8\baselineskip]{%
+\begin{enumerate}[label=(\roman*)]
+\item Lower. A uniform model over fewer possible pronouns has less uncertainty.
+\item Lower. The unigram model no longer needs to split probability mass between ``he'' and ``she''.
+\item Yes. English \(\to\) Englio can be deterministic, so the model can place probability \(1\) on the unique correct target sentence.
+\item No. Englio \(\to\) English is ambiguous because ``o'' does not reveal whether the English target should use ``he'' or ``she.''
+\end{enumerate}}
+\end{enumerate}
+
+
+
+\section*{Problem 2: Log-Linear Models and Word Embeddings}
+\textit{Adapted from prior short-answer, true/false, and CBOW problems.}
+
+\begin{enumerate}[label=(\alph*)]
+\item \textbf{True or False.} Log-linear language models can incorporate arbitrary features of the context, such as part-of-speech tags or semantic tags, when predicting the next token.
+\solution{True. In a log-linear model,
+\[
+p_\theta(y \mid x) = \frac{\exp(\theta_y^\top \phi(x))}{\sum_{y'} \exp(\theta_{y'}^\top \phi(x))},
+\]
+and the feature function \(\phi(x)\) can contain arbitrary hand-designed features of the context.}
+
+\item \textbf{True or False.} word2vec Continuous Bag of Words (CBOW) is a language model.
+\solution{False. CBOW predicts a target token from a bidirectional bag of nearby context words. It does not define a left-to-right factorization of sequence probability, so it is not a proper autoregressive language model.}
+
+\item \textbf{True or False.} word2vec Skip-Gram is a language model.
+\solution{False. Skip-Gram predicts nearby context words from a center word. Like CBOW, it learns useful embeddings but does not define a normalized probability distribution over full token sequences.}
+
+\item Give one \textbf{intrinsic} and one \textbf{extrinsic} way to evaluate the quality of word embeddings.
+\solution{An intrinsic evaluation compares embedding geometry to known lexical relations, such as word similarity rankings, synonym lists, or analogy/country-capital structure. An extrinsic evaluation inserts the embeddings into a downstream task, such as text classification or question answering, and measures whether task performance improves.}
+
+\item Consider the following statements about neural embedding models. Select all that are true.
+\begin{enumerate}[label=\alph*.]
+\item They can produce type-based word embeddings.
+\item They can produce token-based contextualized embeddings.
+\item They are guaranteed to yield lower perplexity than count-based models such as \(n\)-grams.
+\item They may capture both semantic and syntactic information.
+\end{enumerate}
+\solution{The true statements are \textbf{(a), (b), and (d)}. Type-based embeddings appear in models such as word2vec, and token-based contextualized embeddings appear in models such as BERT. There is no guarantee that a neural embedding model even defines an autoregressive distribution suitable for perplexity evaluation, so \textbf{(c)} is false.}
+
+\item Consider the following statements about neural word embeddings. Select all that are true.
+\begin{enumerate}[label=\alph*.]
+\item Each dimension typically corresponds to a single interpretable feature such as tense or gender.
+\item The embedding dimension should be at most \(\sqrt{|V|}\), where \(|V|\) is the vocabulary size.
+\item Embeddings can be type-based representations with one vector per vocabulary item.
+\item Embeddings can be highly useful for downstream NLP tasks.
+\end{enumerate}
+\solution{The true statements are \textbf{(c)} and \textbf{(d)}. Individual dimensions are usually not so neatly interpretable, and there is no general rule forcing the embedding dimension to be at most \(\sqrt{|V|}\).}
+
+\item Two CBOW models are identical in every respect, except that one is trained on the original corpus and the other is trained on the corpus with every sentence reversed. What should you expect about the learned embeddings?
+\solution{They should be identical or extremely similar. Standard CBOW is order-insensitive within the context window, so reversing the corpus preserves the multiset of local context words that each target sees.}
+
+\item \textbf{True or False.} Given two context words \(w_1\) and \(w_2\), a standard CBOW model can assign different context representations to the strings \(w_1\,w_2\) and \(w_2\,w_1\).
+\solution{False. Standard CBOW sums or averages context embeddings, so it ignores order inside the context window.}
+
+\item \textbf{True or False.} If the dot product \(u_{\text{queen}}^\top w_{\text{king}}\) is high in an embedding model, this suggests that ``king'' and ``queen'' tend to occur in similar contexts.
+\solution{True. A high compatibility score between an input embedding and an output embedding generally reflects strong co-occurrence structure, which is one manifestation of similar contexts.}
+
+\item Deep models usually apply nonlinearities in hidden layers but not in the embedding lookup itself. Why?
+\solution{The embedding layer is primarily a learned lookup table that maps each token to a dense vector. The hidden layers are where the model combines those vectors and learns nonlinear contextual interactions. Adding a nonlinearity directly to the lookup is not the main source of modeling power.}
+
+\item Consider a CBOW model with context window size \(k=1\). Suppose \(W,U \in \mathbb{R}^{|V|\times d}\), and the first four vocabulary items are \(I\), \(love\), \(hate\), and \(NLP\). Assume
+\[
+W U^\top =
+\begin{array}{c|rrrr}
+ & I & love & hate & NLP \\
+\hline
+I    & -1.0 & 0.3 & 0.4 & -0.8 \\
+love & -0.3 & 0.6 & -0.4 & 0.0 \\
+hate & 0.8  & 0.2 & -0.1 & 0.2 \\
+NLP  & 0.3  & 0.9 & -0.2 & -0.5
+\end{array}
+\]
+and the model is predicting the missing word in ``\(I\ ?\ NLP\).'' If the model assigns probability \(0.07\) to \(hate\), what probability does it assign to \(love\)?
+\solution[8\baselineskip]{For CBOW with \(k=1\),
+\[
+p_\theta(x_t \mid x_{t-1},x_{t+1})
+\propto
+\exp\left(u_{x_t}^\top \frac{w_{x_{t-1}} + w_{x_{t+1}}}{2}\right).
+\]
+Therefore
+\[
+\frac{p_\theta(love \mid I, NLP)}{p_\theta(hate \mid I, NLP)}
+=
+\exp\left(
+u_{love}^\top \frac{w_I + w_{NLP}}{2}
+-
+u_{hate}^\top \frac{w_I + w_{NLP}}{2}
+\right).
+\]
+From \(WU^\top\), we read off
+\[
+u_{love}^\top w_I = 0.3,\quad
+u_{love}^\top w_{NLP} = 0.9,\quad
+u_{hate}^\top w_I = 0.4,\quad
+u_{hate}^\top w_{NLP} = -0.2.
+\]
+So the exponent difference is
+\[
+\frac{1}{2}(0.3+0.9) - \frac{1}{2}(0.4-0.2) = 0.5.
+\]
+Hence
+\[
+p_\theta(love \mid I, NLP) = 0.07 \, e^{0.5}.
+\]}
+\end{enumerate}
+
+
+
+\section*{Problem 3: Sequence Models, Masked Models, and RNN Intuition}
+\textit{Adapted from prior neural-sequence-model and short-answer problems.}
+
+Consider the following training set:
+\[
+\begin{aligned}
+x_1 &= [\texttt{s}]~&the~&good~&cat~&plays~&[\texttt{/s}] \\
+x_2 &= [\texttt{s}]~&the~&good~&dog~&dances~&[\texttt{/s}] \\
+x_3 &= [\texttt{s}]~&the~&good~&dog~&plays~&[\texttt{/s}] \\
+x_4 &= [\texttt{s}]~&a~&good~&dog~&dances~&[\texttt{/s}]
+\end{aligned}
+\]
+Ignore the boundary tokens \([\texttt{s}]\) and \([\texttt{/s}]\) when computing token-level accuracy.
+
+\begin{enumerate}[label=(\alph*)]
+\item Suppose we train an ordinary \textbf{left-to-right} RNN to predict \(p(x_t \mid x_{<t})\). What is the best token-level exact-match accuracy achievable on this training set?
+\solution[8\baselineskip]{The best possible accuracy is \(\frac{13}{16}\). One optimal pattern of correct/incorrect predictions is
+\[
+\begin{array}{cccc}
+1 & 1 & 0 & 1 \\
+1 & 1 & 1 & 1 \\
+1 & 1 & 1 & 0 \\
+0 & 1 & 1 & 1
+\end{array}
+\]
+The first position is wrong on \(x_4\) because most sentences start with ``the.'' The third position in \(x_1\) is wrong because after ``the good'' the majority continuation is ``dog.'' One of the two endings after ``the good dog'' must also be wrong, since the same left context can continue with either ``dances'' or ``plays.''}
+
+\item Suppose we instead train a \textbf{right-to-left} RNN. What is the best token-level exact-match accuracy achievable?
+\solution[8\baselineskip]{The best possible accuracy is \(\frac{12}{16} = \frac{3}{4}\). One optimal pattern is
+\[
+\begin{array}{cccc}
+1 & 1 & 0 & 1 \\
+1 & 1 & 1 & 0 \\
+1 & 1 & 1 & 1 \\
+0 & 1 & 1 & 0
+\end{array}
+\]
+The right-to-left model can use future context, but it still faces ambiguity in places where the same suffix can correspond to multiple earlier tokens.}
+
+\item Now consider a masked language model trained to predict \(p(x_t \mid x_{<t}, x_{>t})\). What is the best token-level exact-match accuracy achievable?
+\solution[8\baselineskip]{The best possible accuracy is again \(\frac{13}{16}\). One optimal pattern is
+\[
+\begin{array}{cccc}
+1 & 1 & 1 & 1 \\
+1 & 1 & 1 & 1 \\
+1 & 1 & 0 & 0 \\
+0 & 1 & 1 & 1
+\end{array}
+\]
+The masked model uses both left and right context, which resolves some ambiguities, but there are still cases where the observed neighbors are compatible with multiple training examples.}
+
+\item Consider a masked objective that also hides a one-word window on each side of the target, so the model predicts \(x_t\) without seeing \(x_{t-1}\) or \(x_{t+1}\). What is the best token-level exact-match accuracy achievable?
+\solution[8\baselineskip]{The best possible accuracy is still \(\frac{13}{16}\). One optimal pattern is
+\[
+\begin{array}{cccc}
+1 & 1 & 0 & 1 \\
+1 & 1 & 1 & 1 \\
+1 & 1 & 1 & 0 \\
+0 & 1 & 1 & 1
+\end{array}
+\]
+Masking a wider neighborhood changes which positions are easy or hard, but it does not improve the optimal training-set accuracy on this toy dataset.}
+
+\item Briefly state one major strength and one major weakness of RNNs.
+\solution{A major strength is that an RNN can, in principle, condition on arbitrarily long context and produce contextualized token representations. A major weakness is that RNNs are hard to optimize over long sequences because of exploding/vanishing gradients, so they often struggle with long-range dependencies in practice.}
+\end{enumerate}
+
+
+
+\section*{Problem 4: Feed-Forward Models, RNN Parameterizations, and Expressive Power}
+\textit{Adapted from prior RNN and feed-forward language-model problems.}
+
+\begin{enumerate}[label=(\alph*)]
+\item Consider a feed-forward language model that predicts \(x_t\) from the previous two tokens:
+\[
+h_t = \begin{bmatrix} W x_{t-1} \\ W x_{t-2} \end{bmatrix},
+\qquad
+p_{\mathrm{FF}}(x_t \mid x_{t-1}, x_{t-2}) = \softmax(U h_t)_{x_t},
+\]
+where \(x_t\) is one-hot, \(W \in \mathbb{R}^{d \times V}\), and the hidden state has size \(2d\).
+
+Construct an RNN with hidden size \(2d\) that represents the same family of next-token distributions. Give a valid choice of \(f\), \(W_{hh}\), and \(W_{xh}\) if the RNN state \(h_t\) is meant to store \(\big[W x_{t-1};\, W x_{t-2}\big]\).
+\solution[10\baselineskip]{One valid construction is to use the identity nonlinearity \(f(z)=z\), together with
+\[
+W_{hh}
+=
+\begin{bmatrix}
+0 & 0 \\
+I_d & 0
+\end{bmatrix},
+\qquad
+W_{xh}
+=
+\begin{bmatrix}
+W \\
+0
+\end{bmatrix}.
+\]
+If
+\[
+h_{t-1}=
+\begin{bmatrix}
+W x_{t-2} \\
+W x_{t-3}
+\end{bmatrix},
+\]
+then
+\[
+W_{hh} h_{t-1} + W_{xh} x_{t-1}
+=
+\begin{bmatrix}
+W x_{t-1} \\
+W x_{t-2}
+\end{bmatrix}
+= h_t.
+\]
+Using the same output matrix \(U\), the RNN can reproduce the feed-forward model's conditional distributions.}
+
+\item What does part (a) imply about the expressive power of RNN language models relative to fixed-window feed-forward language models?
+\solution{It shows that an RNN can emulate a fixed-window feed-forward language model, so an RNN is at least as expressive as that feed-forward model. In practice it is more expressive because it can also retain information from contexts longer than a fixed window.}
+
+\item Why might a feed-forward language model still outperform an RNN on some datasets?
+\solution{A feed-forward model can be easier to optimize and can focus directly on the short local context that matters most for the task. RNNs may overfit or train poorly, especially in small-data settings or when long-range dependencies are not actually needed.}
+
+\item Consider a simple RNN
+\[
+h_t = f(W_h h_{t-1} + W_x x_t),
+\qquad
+y_t = W_y h_t,
+\]
+with
+\[
+h_0 = \begin{bmatrix} 0 \\ 0 \end{bmatrix},
+\qquad
+W_h =
+\begin{bmatrix}
+0 & 1 \\
+1 & 0
+\end{bmatrix},
+\qquad
+W_y = \begin{bmatrix} 1 & -1 \end{bmatrix}.
+\]
+Assume \(x_t \in \mathbb{R}\) is scalar, \(W_x \in \mathbb{R}^{2 \times 1}\), and there are no bias terms.
+
+\begin{enumerate}[label=(\roman*)]
+\item If \(f\) is the identity function, can the model produce \(y_1=0.5\) and \(y_2=0.2\) on the input sequence \(x_1=1, x_2=1\)? If yes, derive \(W_x\). If not, prove it is impossible.
+\item If \(f\) is ReLU, can the model produce \(y_1=0.5\) and \(y_2=0.2\)? If yes, derive \(W_x\).
+\end{enumerate}
+\solution[14\baselineskip]{Let
+\[
+W_x = \begin{bmatrix} a \\ b \end{bmatrix}.
+\]
+\begin{enumerate}[label=(\roman*)]
+\item With identity activation,
+\[
+h_1 = \begin{bmatrix} a \\ b \end{bmatrix},
+\qquad
+h_2 =
+\begin{bmatrix}
+b+a \\
+a+b
+\end{bmatrix}.
+\]
+Then
+\[
+y_2 = W_y h_2 = (a+b) - (a+b) = 0,
+\]
+which contradicts the requirement \(y_2 = 0.2\). So it is impossible.
+\item With ReLU,
+\[
+h_1 =
+\begin{bmatrix}
+\max(0,a) \\
+\max(0,b)
+\end{bmatrix},
+\]
+so
+\[
+\max(0,a) - \max(0,b) = 0.5.
+\]
+The valid case is \(a=0.5\) and \(b<0\), giving
+\[
+h_1 = \begin{bmatrix} 0.5 \\ 0 \end{bmatrix}.
+\]
+Then
+\[
+W_h h_1 + W_x x_2 =
+\begin{bmatrix}
+0 & 1 \\
+1 & 0
+\end{bmatrix}
+\begin{bmatrix}
+0.5 \\
+0
+\end{bmatrix}
++
+\begin{bmatrix}
+0.5 \\
+b
+\end{bmatrix}
+=
+\begin{bmatrix}
+0.5 \\
+0.5+b
+\end{bmatrix},
+\]
+so
+\[
+h_2 = \operatorname{ReLU}\!\left(
+\begin{bmatrix}
+0.5 \\
+0.5+b
+\end{bmatrix}
+\right).
+\]
+To obtain \(y_2 = 0.2\), we need
+\[
+0.5 - \max(0, 0.5+b) = 0.2,
+\]
+so \(\max(0,0.5+b)=0.3\), which implies \(b=-0.2\). Therefore
+\[
+W_x =
+\begin{bmatrix}
+0.5 \\
+-0.2
+\end{bmatrix}.
+\]
+\end{enumerate}}
+\end{enumerate}
+
+
+
+\section*{Problem 5: Attention and Transformers}
+\textit{Adapted from prior short-answer and true/false sections.}
+
+\begin{enumerate}[label=(\alph*)]
+\item What is self-attention, and why is it useful?
+\solution{Self-attention lets each token compute how strongly it should attend to every other token in the same sequence, including itself. This gives the model flexible access to long-range dependencies and helps it build rich contextualized representations in parallel across all positions.}
+
+\item Consider the following statements. Select all that are true.
+\begin{enumerate}[label=\alph*.]
+\item GPT-2 consists of both an encoder and a decoder.
+\item BERT consists of both an encoder and a decoder.
+\item Transformers can be very effective when pretrained on large corpora and then fine-tuned on separate tasks.
+\item For a single self-attention head, the model learns separate \(W_Q\), \(W_K\), and \(W_V\) matrices for each token in the input sequence.
+\item After self-attention, it is often useful to add a residual connection and apply normalization.
+\end{enumerate}
+\solution{The true statements are \textbf{(c)} and \textbf{(e)}. GPT-2 is decoder-only, BERT is encoder-only, and the \(W_Q\), \(W_K\), and \(W_V\) matrices are shared parameters rather than separate matrices for each token.}
+
+\item \textbf{True or False.} If a Transformer encoder had no positional embeddings, it could effectively be viewed as operating on a bag-of-words representation.
+\solution{True. Without positional information, self-attention is permutation-equivariant, so the encoder loses the ability to distinguish different orderings of the same multiset of tokens.}
+
+\item Suppose a self-attention head processes the sentence ``run spot run.'' Which statement is correct?
+\begin{enumerate}[label=\alph*.]
+\item Every token instance has its own separate \(W_Q\), \(W_K\), and \(W_V\) matrices.
+\item Every word type has its own separate \(W_Q\), \(W_K\), and \(W_V\) matrices.
+\item Each input batch has its own separate \(W_Q\), \(W_K\), and \(W_V\) matrices.
+\item The same \(W_Q\), \(W_K\), and \(W_V\) matrices are shared across all examples in the training data.
+\end{enumerate}
+\solution{The correct answer is \textbf{(d)}. The learned projection matrices are model parameters shared across the entire dataset; different tokens produce different queries, keys, and values only because they have different input representations.}
+
+\item Consider the following statements about self-attention. Select all that are true.
+\begin{enumerate}[label=\alph*.]
+\item Self-attention and cross-attention are identical mechanisms used for the same purpose.
+\item Raw self-attention scores are computed by multiplying each key vector against every value vector.
+\item In practice, attention scoring functions should be cheap to compute, such as a dot product or a small feed-forward network.
+\end{enumerate}
+\solution{The correct answer is \textbf{(c)}. Self-attention and cross-attention are related but not used for the same source/target relationships, and raw scores are computed from queries and keys, not keys and values.}
+
+\item Consider the following statements about cross-attention. Select all that are true.
+\begin{enumerate}[label=\alph*.]
+\item Cross-attention is used when a Transformer has both an encoder and a decoder.
+\item Cross-attention determines how much weight the decoder places on encoder representations.
+\item Cross-attention determines how much weight to place on decoder representations only.
+\end{enumerate}
+\solution{The correct answers are \textbf{(a)} and \textbf{(b)}. In encoder-decoder Transformers, the decoder forms queries while the encoder provides keys and values.}
+
+\item \textbf{True or False.} Removing the causal mask in a Transformer decoder allows the model to peek at future tokens during training but has no effect during inference.
+\solution{False. Removing the causal mask changes the training-time conditioning structure and the function the decoder learns. A decoder trained without a causal mask is not the same left-to-right model used for autoregressive inference.}
+
+\item \textbf{True or False.} Constraining \(W_Q = W_K\) in a Transformer reduces the asymptotic complexity of attention with respect to sequence length, but also reduces expressivity.
+\solution{False. Sharing \(W_Q\) and \(W_K\) may reduce expressivity, but it does not change the asymptotic \(O(T^2)\) cost of computing all pairwise attention scores for a sequence of length \(T\).}
+
+\item \textbf{True or False.} Learned absolute positional embeddings allow extrapolation to sequence lengths longer than those seen in training.
+\solution{False. Learned absolute positional embeddings are typically only trained for positions seen during training, so they do not naturally extrapolate to longer unseen positions.}
+\end{enumerate}
+
+\end{document}
