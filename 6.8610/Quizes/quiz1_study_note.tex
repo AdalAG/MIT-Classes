@@ -36,18 +36,6 @@ Aggregated from Lectures 1--7 in \texttt{6.8610/LectureNotes}
 \section*{Course Throughline}
 \begin{itemize}
 \item \textbf{Natural Language Processing (NLP)} = representation \(+\) modeling for human language.
-\item Main course arc:
-\[
-\begin{aligned}
-\text{LMs}
-&\rightarrow \text{log-linear / embeddings}
-\rightarrow \text{RNNs / attention} \\
-&\rightarrow \text{Transformers}
-\rightarrow \text{evaluation}
-\rightarrow \text{pretraining}
-\rightarrow \text{scaling}
-\end{aligned}
-\]
 \item Repeated theme: many NLP tasks can be reframed as language modeling.
 \item Repeated warning: low loss or high fluency does \emph{not} imply true understanding, reliability, or usefulness.
 \end{itemize}
@@ -112,7 +100,7 @@ p_\theta(x_{1:T})^{-1/T}.
 \item For a uniform distribution over \(V\) words, \(\PPL=V\).
 \item \textbf{Perplexity sanity checks:} \(\PPL>0\) always, and a unigram maximum-likelihood model should outperform a uniform model on its own corpus.
 \item \textbf{Shorter strings are not automatically better.} Autoregressive sentence probability also depends on whether the model decides to stop, so an end-of-sequence choice can make a longer complete sentence more probable than a shorter prefix.
-\item \textbf{Conditional perplexity reaches \(1\) only for deterministic mappings.} English \(\to\) Englio can be deterministic after pronoun collapse, but Englio \(\to\) English remains ambiguous.
+\item \textbf{Conditional perplexity reaches \(1\) only for deterministic mappings.} If one input can map to multiple valid outputs, the conditional perplexity must stay above \(1\).
 \item Language is hard because it is ambiguous, compositional, socially grounded, and constantly changing.
 \item Representation and modeling are the two recurring pillars of the course.
 \end{itemize}
@@ -224,12 +212,13 @@ u_y^\top w_x \approx \log \frac{p(x,y)}{p(x)p(y)} - c.
 \item CBOW and Skip-gram are \textbf{not} proper left-to-right language models.
 \item Neural embedding methods are not guaranteed to beat count-based models on perplexity, because some of them are not autoregressive sequence models at all.
 \item Embedding dimensions are usually not individually interpretable.
-\item High dot products reflect co-occurrence structure and similar contexts.
+\item High input-output dot products such as \(u_y^\top w_x\) reflect predictive compatibility or co-occurrence association.
+\item Similar contexts are more naturally reflected by similarity between embeddings of two words, not by a single cross dot product.
 \item For two candidates \(a\) and \(b\) under the same softmax context,
 \[
 \frac{p(a \mid x)}{p(b \mid x)}=\exp(\operatorname{score}(a,x)-\operatorname{score}(b,x)).
 \]
-\item The embedding layer is mostly a learned lookup table; the nonlinear hidden layers do the contextual feature combination.
+\item In word2vec-style models, the embedding layer is essentially a learned lookup table; richer contextual composition arrives in later sequence models.
 \end{itemize}
 
 \section*{Lecture 3: Feed-Forward Models, RNNs, Seq2Seq, Attention}
@@ -271,7 +260,7 @@ where \(z\) is a vector of logits and \(j\) indexes one output coordinate}
 \sym{\(V\)}{vocabulary}
 \end{symdefs}
 
-\textbf{Backpropagation Through Time (BPTT):}
+\textbf{Backpropagation Through Time (BPTT), final-loss contribution:}
 \[
 \frac{\partial \mathcal{L}_T}{\partial h_k}
 =
@@ -280,7 +269,8 @@ where \(z\) is a vector of logits and \(j\) indexes one output coordinate}
 \frac{\partial h_t}{\partial h_{t-1}}.
 \]
 \begin{symdefs}
-\sym{Interpretation}{repeated Jacobian products across time can make gradients vanish or explode}
+\sym{\(\mathcal{L}_T\)}{loss contribution from the final timestep \(T\)}
+\sym{Interpretation}{for full sequence loss, gradients to \(h_k\) sum contributions from later timesteps; repeated Jacobian products can make gradients vanish or explode}
 \end{symdefs}
 
 \textbf{Exploding-gradient fix: gradient clipping}
@@ -326,35 +316,13 @@ c_t=\sum_{i=1}^{N} a_{t,i} h_i^{enc}.
 \sym{\(c_t\)}{context vector, i.e. weighted average of encoder states}
 \end{symdefs}
 
-\textbf{RNN emulating a 2-token feed-forward LM:}
-\[
-W_{hh}=
-\begin{bmatrix}
-0 & 0 \\
-I_d & 0
-\end{bmatrix},
-\qquad
-W_{xh}=
-\begin{bmatrix}
-W \\
-0
-\end{bmatrix},
-\qquad
-f(z)=z.
-\]
-This construction makes
+\textbf{RNN can emulate a 2-token feed-forward LM:}
 \[
 h_t=[Wx_{t-1};\,Wx_{t-2}],
 \]
-so the RNN can reproduce a 2-token feed-forward LM.
+so the hidden state stores the last two token embeddings and reproduces a fixed 2-token context window.
 \begin{symdefs}
-\sym{\(W_{hh}\)}{hidden-to-hidden transition matrix of the RNN}
-\sym{\(W_{xh}\)}{input-to-hidden matrix of the RNN}
-\sym{\(W\)}{embedding matrix from the original 2-token feed-forward LM}
-\sym{\(I_d\)}{\(d \times d\) identity matrix}
-\sym{\(0\)}{zero block of the appropriate shape}
-\sym{\(d\)}{embedding dimension}
-\sym{\(f(z)=z\)}{identity activation function}
+\sym{\(W\)}{embedding matrix for input tokens}
 \sym{\(x_{t-1}, x_{t-2}\)}{one-hot vectors for the previous two input tokens}
 \sym{\(h_t\)}{RNN hidden state storing the embeddings of the two most recent tokens}
 \sym{\([a;b]\)}{concatenation of vector \(a\) above vector \(b\)}
@@ -533,12 +501,16 @@ p_\theta(\texttt{isNext} \mid s_1, s_2).
 \item masked self-attention: same, but future positions blocked;
 \item cross-attention: decoder attends to encoder states.
 \end{itemize}
+\item Self-attention lets each token access all other positions directly and parallelizes across positions better than recurrent models.
 \item Without positional information, a Transformer encoder behaves like a bag-of-words system up to permutation symmetry.
+\item Positional information is necessary because content-only attention does not otherwise encode order.
 \item Transformer encoder = self-attention \(+\) residual/norm \(+\) FFNN.
-\item Transformer decoder = masked self-attention; encoder-decoder models also add cross-attention.
+\item Transformer decoder = masked self-attention; encoder-decoder models also add cross-attention for conditional generation.
+\item Causal masking matters because it preserves the left-to-right training objective and prevents information leakage from future tokens.
 \item \textbf{BERT} = encoder-only, pretrained with masked language modeling and originally next sentence prediction.
 \item BERT masking rule: choose \(15\%\) of tokens; of those, \(80\%\) \texttt{[MASK]}, \(10\%\) random, \(10\%\) unchanged.
 \item \textbf{GPT} = decoder-only autoregressive model using masked self-attention.
+\item Encoder-only models suit representation tasks; decoder-only models suit generation; encoder-decoder models suit conditional generation such as translation.
 \item \(W_Q\), \(W_K\), and \(W_V\) are shared parameters across all tokens and examples.
 \item Raw attention scores come from queries against keys, not keys against values.
 \item Cross-attention is specifically the decoder weighting encoder-side representations.
@@ -578,44 +550,6 @@ p_3(x)&=\frac{1}{2}p_1(x) \\
 \]
 A constant log-likelihood penalty can hide catastrophic generation failures.
 
-\textbf{Bilingual Evaluation Understudy (BLEU):}
-\[
-\operatorname{Precision}_n
-=
-\frac{\#(\text{\(n\)-grams in reference and prediction})}
-{\#(\text{\(n\)-grams in prediction})},
-\]
-\[
-\operatorname{BLEU}
-=
-\operatorname{BP}\cdot
-\exp\left(\frac{1}{N}\sum_{n=1}^{N}\log \operatorname{Precision}_n\right).
-\]
-\begin{symdefs}
-\sym{\(\operatorname{BP}\)}{brevity penalty}
-\sym{\(N\)}{largest \(n\)-gram order used in BLEU}
-\end{symdefs}
-
-\textbf{Recall-Oriented Understudy for Gisting Evaluation (ROUGE)-2:}
-\[
-\operatorname{ROUGE}\text{-}2
-=
-\frac{\#(\text{2-grams in reference and prediction})}
-{\#(\text{2-grams in reference})}.
-\]
-
-\textbf{BERTScore recall-style version:}
-\[
-\operatorname{BERTScore}_{\text{recall}}
-=
-\frac{1}{|r|}\sum_i \max_j \cos(r_i, p_j).
-\]
-\begin{symdefs}
-\sym{\(r_i\)}{reference-token embeddings}
-\sym{\(p_j\)}{prediction-token embeddings}
-\sym{\(|r|\)}{number of reference tokens}
-\end{symdefs}
-
 \textbf{Forced-choice accuracy:}
 \[
 \operatorname{Accuracy}
@@ -626,7 +560,13 @@ A constant log-likelihood penalty can hide catastrophic generation failures.
 \begin{itemize}
 \item Demo \(\neq\) solved problem.
 \item Recognition and generation are different skills.
+\item Forced-choice evaluations are clean and easy to score, but they test a narrow recognition setup rather than open-ended generation.
+\item Free-response evaluation better matches real use, but it is harder to score and easier to make noisy.
 \item Human evaluation is expensive, noisy, and hard to reproduce, but still the gold standard in many settings.
+\item Elicitation matters: prompt wording, sampling choices, and rubric design can change the measured result.
+\item \textbf{BLEU}: precision-oriented \(n\)-gram overlap with a brevity penalty.
+\item \textbf{ROUGE}: recall-oriented overlap, common in summarization.
+\item \textbf{BERTScore}: embedding-based semantic similarity rather than exact overlap.
 \item LM-as-a-judge can work because verification is often easier than generation.
 \item Common failure modes: Goodhart's Law, Clever Hans effects, leakage, spurious shortcuts, metric overfitting.
 \end{itemize}
@@ -679,29 +619,11 @@ p_\theta(y=1 \mid s_1, s_2).
 \]
 \end{itemize}
 
-\textbf{Importance weighting for data mixing:}
-\[
-w(x)=\frac{\hat{p}_{\mathrm{FT}}(x)}{\hat{p}_{\mathrm{PT}}(x)}.
-\]
-\begin{symdefs}
-\sym{\(w(x)\)}{weight that upweights pretraining examples resembling the downstream domain}
-\end{symdefs}
-
-\textbf{Adversarial reweighting template:}
-\[
-\min_\theta \max_{q \in \Delta^K}
-\sum_{k=1}^{K} q_k\big(\mathcal{L}_k(\theta)-\mathcal{L}_k(\theta_{\mathrm{ref}})\big).
-\]
-\begin{symdefs}
-\sym{\(\Delta^K\)}{simplex over \(K\) data subpopulations}
-\sym{\(q_k\)}{weight on subpopulation \(k\)}
-\sym{\(\theta_{\mathrm{ref}}\)}{reference model}
-\end{symdefs}
-
 \begin{itemize}
 \item Pretraining learns general language/world knowledge; fine-tuning steers behavior to tasks or domains.
 \item Instruction tuning makes a base model respond usefully to prompts.
 \item Continued pretraining on in-domain unlabeled text is often helpful.
+\item Data mixing or reweighting tries to make pretraining data look more like the downstream domain.
 \item Synthetic question-answer (QA) or instruction data can help when labels are scarce.
 \item Parameter-Efficient Fine-Tuning (PEFT) updates only a small subset of parameters.
 \item Fine-tuning is often \textbf{shallow}: it surfaces or reweights capabilities already present from pretraining.
@@ -755,13 +677,14 @@ L(X)=kX^{-\alpha}
 
 \begin{itemize}
 \item Workflow: train many smaller models, measure loss, fit power laws, extrapolate.
+\item On log-log plots, approximate power laws look roughly linear.
+\item Under fixed compute, training cost is roughly proportional to parameter count times training-token count, so model size and data size trade off against each other.
 \item Kaplan view: bigger models looked especially powerful.
-\item Chinchilla refinement: compute-optimal training uses a better parameter/data balance.
+\item Chinchilla refinement: many large models were undertrained, so compute-optimal scaling uses a better parameter/data balance.
 \item In-context learning: adapt from instructions/examples in the prompt, without gradient updates.
 \item Chain-of-thought reasoning: generate intermediate reasoning steps token by token.
 \item Emergence may be real, but some ``jumps'' are metric artifacts.
-\item Loss and perplexity remain useful but are increasingly weak proxies for reasoning, safety, and tool use.
-\item Progress now depends on more than pretraining scale: post-training, tool use, inference-time reasoning, and better inductive biases matter.
+\item Loss and perplexity remain useful but imperfect proxies for downstream reasoning and task performance.
 \end{itemize}
 
 \section*{Likely Quiz Habits}
