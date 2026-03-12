@@ -1,0 +1,245 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{enumitem}
+\usepackage{hyperref}
+
+\setlist[itemize]{topsep=4pt, itemsep=2pt, parsep=0pt}
+
+\title{6.8610 Spring 2026 Lecture 5 Notes: Evaluation}
+\author{Junru Ren with help from Codex}
+\date{February 19, 2026}
+
+\begin{document}
+\maketitle
+
+\section{Evaluation}
+
+\subsection{Motivation}
+This lecture asks a foundational question: \textbf{how should NLP systems actually be evaluated?} Up to this point in the course, many models were trained with maximum likelihood or related objectives, but a low training loss or low perplexity does not necessarily imply that a system is useful, truthful, robust, or aligned with the real task of interest.
+
+\begin{itemize}
+    \item The quantity we truly care about is often not directly differentiable or even easy to formalize. The lecture explicitly named goals such as \textbf{truth}, \textbf{beauty}, and \textbf{usefulness}.
+    \item Intrinsic metrics such as negative log-likelihood and perplexity are valuable, but they can miss severe practical failures.
+    \item Modern NLP systems are evaluated in many ways: compelling demos, benchmark accuracy, human judgments, automatic formal metrics, and increasingly \textbf{language models as judges}.
+    \item Evaluation is not only about ranking models; it is also about understanding failure modes, designing trustworthy claims, and choosing metrics that actually reflect the scientific or product goal.
+\end{itemize}
+
+\subsection{Key Concepts}
+\textbf{Definition: Intrinsic Evaluation}
+
+Intrinsic evaluation measures how well a model fits a formal objective, such as test-set likelihood or perplexity, without necessarily checking performance on a downstream task.
+
+\textbf{Definition: Extrinsic Evaluation}
+
+Extrinsic evaluation measures how well a model helps accomplish a real task, such as translation, classification, summarization, question answering, or interactive assistance.
+
+\begin{itemize}
+    \item \textbf{Cool demos:} evaluate whether a system can visibly perform a target task at all. Demos can be motivating and meaningful, but they are also easy to overfit.
+    \item \textbf{Forced-choice evaluation:} convert a task into multiple-choice, true/false, or other constrained outputs so scoring is straightforward.
+    \item \textbf{Human evaluation:} ask people to rate or rank outputs. This remains the gold standard for many generative tasks, but it is expensive and noisy.
+    \item \textbf{Formal metrics:} use automatic functions such as perplexity, Bilingual Evaluation Understudy (BLEU), Recall-Oriented Understudy for Gisting Evaluation (ROUGE), or BERTScore, which uses contextual embeddings from Bidirectional Encoder Representations from Transformers (BERT), to compare predictions with references.
+    \item \textbf{LM-as-a-judge:} use a stronger language model to score or compare outputs, often with access to the prompt, a reference answer, a checklist, or external tools.
+    \item \textbf{Representative data:} the evaluation set must resemble the real deployment problem closely enough to support the claim being made.
+    \item \textbf{Inter-annotator disagreement:} humans do not always agree, especially on nuanced judgments involving style, fluency, truthfulness, or preference.
+    \item \textbf{Clever Hans effect:} a model may appear to solve the intended task while actually exploiting spurious cues.
+    \item \textbf{Goodhart's Law:} once a metric becomes a target, systems may optimize that metric without improving the underlying goal.
+    \item \textbf{Pareto frontier thinking:} model quality is multi-dimensional; accuracy alone may hide tradeoffs involving cost, speed, safety, or usability.
+\end{itemize}
+
+\subsection{Core Models and Equations}
+\textbf{Training by maximum likelihood.} Much of the course so far has used objectives of the form
+\[
+\hat{\theta} = \arg\max_{\theta} \sum_{(x,y)} \log p_\theta(y \mid x).
+\]
+
+\textbf{Test-set perplexity.} On a held-out set of \(n\) examples,
+\[
+\operatorname{PPL} = \exp\left\{-\frac{1}{n}\sum_{(x,y)} \log p_\theta(y \mid x)\right\}.
+\]
+Perplexity is the default intrinsic metric for many language models.
+
+\textbf{Why perplexity is not enough.} The lecture considered a model \(LM_3\) that behaves like a strong model \(LM_1\), except that with probability \(0.5\) it emits garbage such as \texttt{asdfjkl;}. On real test data,
+\[
+p_3(x) = \frac{1}{2}p_1(x)
+\]
+implies
+\[
+\frac{1}{n}\sum_x \log p_3(x)
+=
+\frac{1}{n}\sum_x \log p_1(x) + \log\frac{1}{2}.
+\]
+Thus the held-out log-likelihood only suffers a constant penalty, even though the model may be catastrophically bad at generation time.
+
+\textbf{BLEU.} BLEU measures \emph{n}-gram precision between a prediction and a reference. For order \(n\),
+\[
+\operatorname{Precision}_n
+=
+\frac{\#(\text{\(n\)-grams in reference and prediction})}
+{\#(\text{\(n\)-grams in prediction})}.
+\]
+The standard BLEU score combines multiple \emph{n}-gram precisions with a brevity penalty (BP):
+\[
+\operatorname{BLEU}
+=
+\operatorname{BP}\cdot
+\exp\left(
+\frac{1}{N}\sum_{n=1}^{N}\log \operatorname{Precision}_n
+\right).
+\]
+The lecture emphasized BLEU as a historically important automatic metric that often correlated surprisingly well with human judgments, especially in early machine translation.
+
+\textbf{ROUGE.} ROUGE is recall-oriented. For example, a 2-gram recall version is
+\[
+\operatorname{ROUGE}\text{-}2
+=
+\frac{\#(\text{2-grams in reference and prediction})}
+{\#(\text{2-grams in reference})}.
+\]
+ROUGE is especially common in summarization.
+
+\textbf{BERTScore.} BERTScore replaces exact lexical overlap with contextual embedding similarity. If \(r_i\) are reference token embeddings and \(p_j\) are prediction token embeddings, then a recall-style version is
+\[
+\operatorname{BERTScore}_{\text{recall}}
+=
+\frac{1}{|r|}
+\sum_i \max_j \cos(r_i, p_j).
+\]
+This allows synonyms or semantically similar paraphrases to receive partial credit even when the exact words differ.
+
+\textbf{Forced-choice accuracy.} When tasks are phrased as discrete options,
+\[
+\operatorname{Accuracy}
+=
+\frac{\#(\text{correct choices})}{\#(\text{examples})}.
+\]
+This metric is simple, but the lecture stressed that \emph{elicitation procedure} matters: asking for the probability of one token, the probability of a whole answer string, or a generated free response can lead to different measured performance.
+
+\subsection{Algorithms / Architectures}
+\textbf{1. Demo-based evaluation}
+\begin{itemize}
+    \item Define a task \(X\) that a reader can understand directly.
+    \item Show the system performing the task.
+    \item Use the demo to establish that the capability exists at all.
+    \item Then ask whether the behavior generalizes beyond the narrow demo setting.
+\end{itemize}
+
+\textbf{2. Forced-choice evaluation}
+\begin{itemize}
+    \item Convert the task into a constrained output space such as multiple choice, yes/no, or true/false.
+    \item Decide how the model will be elicited:
+    \begin{itemize}
+        \item directly compare probabilities of answer options,
+        \item compare probabilities of full answer strings,
+        \item or force the model to generate and then map the output to a label.
+    \end{itemize}
+    \item Score with accuracy or a related discrete metric.
+    \item Inspect whether success reflects real task understanding or merely answer recognition and test-taking heuristics.
+\end{itemize}
+
+\textbf{3. Human evaluation protocol}
+\begin{itemize}
+    \item Sample representative inputs from the task distribution.
+    \item Blind the evaluation whenever possible so raters do not know which system produced which output.
+    \item Ask annotators to rank, rate, or compare outputs.
+    \item Measure agreement, monitor fatigue, and check annotator quality.
+    \item Budget for cost and reproducibility issues.
+\end{itemize}
+
+\textbf{4. Formal metric evaluation}
+\begin{itemize}
+    \item Build a held-out set with reference answers.
+    \item Generate predictions from the system.
+    \item Compute one or more automatic metrics such as perplexity, BLEU, ROUGE, or BERTScore.
+    \item Compare systems under the same preprocessing and tokenization assumptions.
+    \item Use multiple metrics when one metric is likely to miss important failure modes.
+\end{itemize}
+
+\textbf{5. LM-as-a-judge evaluation}
+\begin{itemize}
+    \item Select a judge model, ideally one that is stronger or more reliable than the models being evaluated.
+    \item Provide the judge with the prompt, candidate output, and optionally a reference answer.
+    \item If possible, give the judge a checklist of required properties.
+    \item Optionally allow the judge to use external tools or simulated interaction traces.
+    \item Aggregate scores or pairwise preferences across examples.
+\end{itemize}
+
+\textbf{6. Efficient benchmarking}
+\begin{itemize}
+    \item Randomly subsample evaluation data while preserving enough statistical power.
+    \item Cluster examples and perform stratified subsampling from each cluster.
+    \item Fit estimators that infer benchmark-level scores from a smaller subset of evaluated datapoints.
+\end{itemize}
+
+\subsection{Important Intuitions from the Professor}
+\begin{itemize}
+    \item \textbf{Bad evaluation can invalidate otherwise good work.} The lecture gave a concrete warning about student projects that were evaluated by the project members themselves in a non-blind way; this was described plainly as bad science.
+    \item \textbf{A compelling demo is not the same as a solved problem.} The professor emphasized several distinct implications that do \emph{not} follow from a strong demo: sustainable progress, product viability, and task completeness.
+    \item \textbf{Forced-choice evaluation is often a practical default.} Even though it constrains the task, it remains one of the cleanest ways to get unambiguous scoring on modern benchmarks.
+    \item \textbf{Recognition and generation are different skills.} A model may identify the right answer in multiple-choice form without being able to generate the answer reliably on its own.
+    \item \textbf{Humans are still the gold standard, but not for free.} Human evaluation is expensive in time and money, affected by fatigue and demographics, and hard to reproduce exactly.
+    \item \textbf{LM judges work partly because verification can be easier than generation.} The lecture stressed that this setting is especially natural when a judge has privileged access to a reference solution or a checklist.
+    \item \textbf{Nothing beats human grounding for judge examples.} In-context examples can improve an LM judge, but human-generated examples were described as noticeably stronger than model-generated ones.
+    \item \textbf{Most evaluation mistakes are really design mistakes.} The important question is not only how to score outputs, but also what data to choose, who should annotate, and what claim the evaluation is supposed to justify.
+    \item \textbf{Do not over-index on one metric.} Accuracy, speed, cost, and usability are all relevant. A system can look worse on one benchmark and still represent the better long-term idea.
+\end{itemize}
+
+\subsection{Examples}
+\begin{itemize}
+    \item \textbf{Benchmark examples:} the lecture opened with real contemporary benchmarks such as ButterBench, land-vs.-water coordinate prediction, and VendingBench to show how broad evaluation has become.
+    \item \textbf{LM1/LM2/LM3 thought experiment:} a model that occasionally emits garbage may still not look as terrible as expected under held-out log-likelihood, illustrating the limits of perplexity.
+    \item \textbf{SHRDLU:} an impressive classic demo system that worked because it operated in a tiny, closed-world domain with hand-built grammars and semantics.
+    \item \textbf{GPT-2 and Google Glass:} both were used to separate technical capability from broader questions about product success, social acceptance, and long-term progress.
+    \item \textbf{SuperGLUE, a successor to the General Language Understanding Evaluation (GLUE) benchmark, and Humanity's Last Exam:} benchmark examples showing the appeal of forced-choice evaluation and the dangers of overfitting to one public evaluation set.
+    \item \textbf{Machine translation:} a reference translation and a predicted translation were used to motivate formal similarity metrics such as BLEU and ROUGE.
+    \item \textbf{Representative-data problem:} Europarl parliamentary proceedings versus Haitian crisis messages illustrated that a training or evaluation corpus can be technically rich yet socially unrepresentative of the intended use case.
+    \item \textbf{Checklist judging:} an LM judge can be asked whether an answer satisfies requirements such as listing Airbnbs in Singapore, ensuring accommodations fit two people, and respecting a price ceiling.
+    \item \textbf{Clever Hans in fake-news detection:} the lecture highlighted work showing that models could predict labels using evidence alone, without looking at the actual claim, revealing spurious shortcuts.
+\end{itemize}
+
+\subsection{Common Pitfalls / Limitations}
+\begin{itemize}
+    \item \textbf{Overfitting to the metric:} optimizing a benchmark score can move the model away from the real task objective.
+    \item \textbf{Brittle demos:} a system may succeed only in a tightly constrained environment.
+    \item \textbf{Benchmark leakage and overexposure:} public development sets can gradually become part of the optimization loop, even if they are nominally held out.
+    \item \textbf{Forced-choice distortion:} not all tasks naturally fit multiple-choice framing, and success may partly reflect answer recognition rather than task mastery.
+    \item \textbf{Human-evaluation noise:} raters vary in preferences, energy, demographics, expertise, and even whether they are genuine human annotators.
+    \item \textbf{BLEU and ROUGE limitations:} exact overlap metrics miss synonymy, semantic similarity, and the fact that some words matter much more than others.
+    \item \textbf{LM judges are not free labels:} they inherit biases, can be costly, require prompt engineering, and may need stronger human grounding than is initially obvious.
+    \item \textbf{Weak scientific rigor:} many NLP comparisons do not fully account for randomness over datasets, training runs, or model outputs.
+    \item \textbf{Spurious correlations:} models can exploit formatting cues, answer length, position bias, punctuation, or annotation artifacts rather than learning the intended reasoning skill.
+\end{itemize}
+
+\subsection{Connections to Other Lectures}
+\begin{itemize}
+    \item This lecture reframes Lecture 1's emphasis on language modeling: a strong model of \(p_\theta(y \mid x)\) is not automatically a strong system for truth, usefulness, or downstream utility.
+    \item It clarifies how to evaluate the models from Lecture 2. Log-linear models and word embeddings can be compared intrinsically, but downstream tasks often demand different metrics.
+    \item It connects directly to Lecture 3's seq2seq and attention material, especially through translation and summarization metrics such as BLEU and ROUGE.
+    \item It also connects to Lecture 4's BERT and GPT-style models: encoder and decoder systems are now often evaluated with large benchmarks, preference judgments, and LM-as-a-judge pipelines rather than with a single intrinsic metric.
+    \item Conceptually, this lecture adds the missing question behind all previous modeling lectures: \emph{what does it mean for the model to be good?}
+\end{itemize}
+
+\subsection{Exam-Relevant Summary}
+\begin{itemize}
+    \item Maximum-likelihood training and held-out perplexity are important, but they are not sufficient for judging usefulness or generation quality.
+    \item Perplexity is
+    \[
+    \operatorname{PPL} = \exp\left\{-\frac{1}{n}\sum_{(x,y)} \log p_\theta(y \mid x)\right\}.
+    \]
+    \item A model can have tolerable test likelihood while still generating catastrophic outputs at inference time.
+    \item Main evaluation families in this lecture: cool demos, forced-choice evals, human evals, formal metrics, and LM judges.
+    \item Forced-choice evals are easy to score, but their elicitation procedure matters and they do not fit every task naturally.
+    \item Human evaluation is still the gold standard for many generative tasks, but it is expensive, noisy, and hard to reproduce.
+    \item BLEU is based on \emph{n}-gram precision; ROUGE is recall-oriented and common in summarization.
+    \item BERTScore replaces exact token overlap with contextual embedding similarity.
+    \item LM-as-a-judge is useful when verification is easier than generation, especially if the judge has access to references, checklists, or tools.
+    \item Good evaluation needs representative inputs and trustworthy baselines. It also requires awareness of benchmark leakage.
+    \item Clever Hans effects and Goodhart's Law are central warnings: high scores do not guarantee that the model learned the intended skill.
+    \item The right way to compare systems is often multi-dimensional: cost, speed, robustness, and usefulness may matter as much as raw accuracy.
+\end{itemize}
+
+\end{document}

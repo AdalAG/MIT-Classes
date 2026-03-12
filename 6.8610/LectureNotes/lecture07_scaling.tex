@@ -1,0 +1,224 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{enumitem}
+\usepackage{hyperref}
+
+\setlist[itemize]{topsep=4pt, itemsep=2pt, parsep=0pt}
+
+\title{6.8610 Spring 2026 Lecture 7 Notes: Scaling Laws and Emergent Behavior}
+\author{Junru Ren with help from Codex}
+\date{February 26, 2026}
+
+\begin{document}
+\maketitle
+
+\section{Scaling Laws and Emergent Behavior}
+
+\subsection{Motivation}
+This lecture studies a central practical question in modern NLP: if one has a fixed compute budget, what training run should be launched to obtain the best model? The answer motivated an entire research program around \textbf{scaling laws}, which try to predict how loss changes as model size, data size, and training compute increase.
+
+\begin{itemize}
+    \item In recent years, language modeling improved not just by better architectures, but by systematically scaling models, data, and compute.
+    \item Large language models are foundation models trained with self-supervised next-token prediction on massive web-scale corpora.
+    \item If scaling is predictable, then one can train many small models, fit empirical laws, and extrapolate to decide how to spend a much larger training budget.
+    \item However, even if pretraining loss scales smoothly, the capabilities we care about, such as reasoning, safety, and tool use, may not behave as smoothly.
+    \item The lecture therefore frames scaling both as a powerful engineering strategy and as an incomplete picture of progress.
+\end{itemize}
+
+\subsection{Key Concepts}
+\textbf{Definition: Scaling Law}
+
+A scaling law is an empirical power-law relationship between model performance and a resource such as parameter count, training tokens, or compute.
+
+\begin{itemize}
+    \item \textbf{Compute budget framing:} imagine having a fixed budget such as a specific cluster for a month. The question is which model/data/training configuration minimizes validation loss within that budget.
+    \item \textbf{Validation loss and perplexity:} the lecture uses next-token prediction loss as the main axis of analysis because it is smooth, universal, and easy to measure.
+    \item \textbf{Power law:} when plotted on log-log axes, many of these relationships become approximately linear.
+    \item \textbf{Asymptotic thinking:} the important question is not how a model performs at a tiny scale, but how performance changes as scale increases.
+    \item \textbf{Kaplan et al.\ scaling laws:} early large-scale evidence that loss decreases as a power law in model size, data size, and compute.
+    \item \textbf{Chinchilla scaling:} a later refinement emphasizing compute-optimal tradeoffs between parameter count and number of training tokens.
+    \item \textbf{Compute-optimal training:} the best use of a training budget may require balancing model size and data rather than maximizing only one of them.
+    \item \textbf{Emergent behavior:} some capabilities appear to exhibit sudden qualitative jumps with scale, rather than only gradual smooth improvements.
+    \item \textbf{In-context learning:} a model can adapt to a task from natural-language instructions and a few examples in the prompt, without gradient-based fine-tuning.
+    \item \textbf{Chain-of-thought reasoning:} models can solve harder tasks by generating intermediate reasoning steps token by token.
+    \item \textbf{Bitter Lesson perspective:} simple, general methods that scale with compute often outperform more hand-engineered, task-specific approaches.
+\end{itemize}
+
+\subsection{Core Models and Equations}
+\textbf{Validation loss and perplexity.} Let \(L\) denote the average next-token prediction loss on a validation set. Then perplexity is
+\[
+\operatorname{PPL} = e^{L}.
+\]
+Perplexity can be interpreted as the average number of equally likely choices the model is uncertain between at each step.
+
+\textbf{Generic power law.} The lecture frames a basic scaling relationship as
+\[
+L(X) \propto X^{-\alpha},
+\]
+where \(X\) is a resource such as number of parameters, training tokens, or compute, and \(0 < \alpha < 1\). Doubling the resource gives
+\[
+L(2X) = 2^{-\alpha}L(X),
+\]
+which means improvements are predictable but exhibit diminishing returns.
+
+\textbf{Kaplan-style empirical scaling.} If data and compute are not bottlenecks, test loss scales approximately as a power law in the number of non-embedding parameters \(N\). Similarly, if model capacity is not the bottleneck, test loss scales approximately as a power law in the number of training tokens \(D\). Compute-optimal loss also follows a power law in total compute \(C\).
+
+\textbf{Chinchilla parameter-data law.} A widely used formulation is
+\[
+L(N, D) = E + \frac{A}{N^{\alpha}} + \frac{B}{D^{\beta}},
+\]
+where:
+\begin{itemize}
+    \item \(E\) is the irreducible loss floor,
+    \item \(N\) is model size,
+    \item \(D\) is number of training tokens,
+    \item \(A,B > 0\) are scale constants,
+    \item \(\alpha,\beta \in (0,1)\) are power-law exponents.
+\end{itemize}
+The lecture emphasized that \(\alpha\) and \(\beta\) being less than 1 means diminishing returns.
+
+\textbf{Approximate dense-transformer compute relation.} For rough planning, training compute can be modeled as
+\[
+C \approx 6 N D.
+\]
+This lets us connect model size and number of tokens under a fixed training budget.
+
+\textbf{Compute-optimal choice.} Under a fixed \(C\), substitute
+\[
+D = \frac{C}{6N}
+\]
+into the Chinchilla loss model and minimize with respect to \(N\). This gives a recommended compute-optimal pair \((N,D)\) for the chosen budget.
+
+\textbf{Why log-log plots help.} Taking logs of a power law
+\[
+L(X) = kX^{-\alpha}
+\]
+gives
+\[
+\log L(X) = \log k - \alpha \log X,
+\]
+which is linear in \(\log X\). This is why scaling-law papers visualize these relationships on log-log axes.
+
+\subsection{Algorithms / Architectures}
+\textbf{1. Naive strategies and why they fail}
+\begin{itemize}
+    \item Train many candidate models at equal compute and pick the best one.
+    \item Problem: your final chosen model only used a fraction of your total compute budget.
+    \item Tune hyperparameters at very small scale and copy them to large scale.
+    \item Problem: good choices at small scale often do not transfer reliably to large scale.
+\end{itemize}
+
+\textbf{2. Scaling-law workflow}
+\begin{itemize}
+    \item Train many smaller models over a range of scales.
+    \item Measure validation loss against compute, model size, and data size.
+    \item Plot these relationships on log-log axes.
+    \item Fit a power-law model.
+    \item Extrapolate to the large training budget.
+\end{itemize}
+
+\textbf{3. Practical Chinchilla-style planning}
+\begin{itemize}
+    \item Choose several model sizes spanning at least an order of magnitude.
+    \item For each size, try multiple learning-rate schedules and/or data budgets.
+    \item Record validation loss at multiple compute points.
+    \item Either fit the lower envelope of best-achievable loss versus compute, or directly fit
+    \[
+    L(N,D)=E+\frac{A}{N^\alpha}+\frac{B}{D^\beta}.
+    \]
+    \item Given a target compute budget \(C\), solve for the compute-optimal \(N\) and \(D\).
+\end{itemize}
+
+\textbf{4. Evaluating beyond perplexity}
+\begin{itemize}
+    \item Track validation loss and perplexity because they are smooth and universal.
+    \item Also monitor downstream tasks such as general language understanding, coding, instruction following, reasoning, and live human usage.
+    \item Ask whether loss reduction still correlates with the capabilities you care about.
+\end{itemize}
+
+\textbf{5. Interpreting emergence}
+\begin{itemize}
+    \item Measure capability as a function of scale.
+    \item Look for thresholds where accuracy appears to jump sharply.
+    \item Test whether the jump is robust or an artifact of the metric.
+    \item Compare plain prompting, few-shot prompting, and chain-of-thought prompting.
+\end{itemize}
+
+\subsection{Important Intuitions from the Professor}
+\begin{itemize}
+    \item \textbf{Scaling is an engineering program, not a law of nature.} The professor used the analogy to Moore's Law: impressive exponential trends require continuous innovation and can eventually stall.
+    \item \textbf{Loss is a very useful but incomplete proxy.} Smooth reductions in next-token prediction loss often correlate with downstream quality, but increasingly weakly for reasoning, safety, and other nuanced capabilities.
+    \item \textbf{Kaplan's ``make the model bigger'' worldview was a productive illusion.} It was not literally correct, but it pushed the field toward valuable discoveries.
+    \item \textbf{Chinchilla changed the optimization target.} The main message was not that scaling laws were wrong, but that compute-optimal allocation between parameters and tokens had been misestimated.
+    \item \textbf{Data quality and architecture quality change the law you should fit.} One should not blindly copy coefficients from another group's paper if the dataset, optimizer, or model family is different.
+    \item \textbf{Emergent behavior was genuinely surprising.} In-context learning and later chain-of-thought performance were not what many researchers expected from vanilla next-token prediction.
+    \item \textbf{Emergence may partly reflect measurement artifacts.} A capability can look like a step function when the evaluation metric has thresholds or compounds multiple smaller skills.
+    \item \textbf{Scaling alone is no longer the whole story.} Once a strong pretrained model exists, post-training, inference-time reasoning, tool use, and better inductive biases become more important levers.
+\end{itemize}
+
+\subsection{Examples}
+\begin{itemize}
+    \item \textbf{OpenAI 2018 AI-and-compute plot:} the lecture used this as an early public signal that training compute for frontier models had been growing rapidly.
+    \item \textbf{Moore's Law analogy:} scaling in NLP was compared to decades of transistor growth in hardware.
+    \item \textbf{Course-project framing:} the lecture asked what a student team would do with a fixed compute budget and why naive hyperparameter copying from small models is unreliable.
+    \item \textbf{Kaplan et al.\ 2020:} showed approximate power-law relationships between test loss and parameter count, data size, and compute.
+    \item \textbf{Chinchilla 2022:} argued that compute-optimal training requires scaling model size and training data more evenly than earlier views suggested.
+    \item \textbf{Few-shot translation:} a sufficiently large autoregressive LM can see a few English-to-French examples in its context and continue with a new translation without gradient updates.
+    \item \textbf{Chain-of-thought on arithmetic:} models can be prompted to write intermediate steps, and the capability appears to improve sharply with scale.
+    \item \textbf{Grade School Math 8K (GSM8K) extrapolation caution:} naive extrapolation from pure scaling would have predicted absurdly large models to solve grade-school math, yet post-training and reasoning methods surpassed that expectation with much smaller systems.
+\end{itemize}
+
+\subsection{Common Pitfalls / Limitations}
+\begin{itemize}
+    \item \textbf{Overtrusting one fitted law:} coefficients depend on data quality, architecture, optimizer, and evaluation setup.
+    \item \textbf{Optimizing only for training-time compute:} a deployment setting may prefer overtraining a smaller model if inference cost dominates over the model's lifetime.
+    \item \textbf{Overfixating on perplexity:} it is not a sufficient proxy for reasoning, safety, or agentic usefulness.
+    \item \textbf{Assuming emergence is always real:} some ``sudden jumps'' may be artifacts of thresholded or compounded evaluations.
+    \item \textbf{Believing scale is all you need:} large models may be necessary for some capabilities, but they are far from sufficient.
+    \item \textbf{Ignoring diminishing returns:} even if power laws continue, the extra compute required for small improvements may become unjustifiable.
+    \item \textbf{Missing new axes of scaling:} post-training, tool use, and inference-time reasoning can matter as much as additional pretraining.
+\end{itemize}
+
+\subsection{Connections to Other Lectures}
+\begin{itemize}
+    \item This lecture builds directly on Lecture 6, which introduced pretraining and fine-tuning. Scaling laws answer how to choose the size of that pretraining run.
+    \item It also connects to Lecture 5 on evaluation by questioning whether validation loss and perplexity are sufficient proxies for the capabilities we care about.
+    \item The discussion of in-context learning and chain-of-thought connects back to Lecture 4's Transformer architecture, since these behaviors arise in large decoder-only Transformers trained with next-token prediction.
+    \item The lecture sets up future lectures on post-training, reasoning, and tool use by arguing that pretraining loss reduction alone cannot explain current frontier-model progress.
+\end{itemize}
+
+\subsection{Exam-Relevant Summary}
+\begin{itemize}
+    \item Perplexity is
+    \[
+    \operatorname{PPL}=e^L,
+    \]
+    where \(L\) is validation loss.
+    \item A basic scaling law has the form
+    \[
+    L(X)\propto X^{-\alpha},
+    \]
+    so doubling a resource gives predictable but diminishing improvements.
+    \item Chinchilla-style scaling uses
+    \[
+    L(N,D)=E+\frac{A}{N^\alpha}+\frac{B}{D^\beta}.
+    \]
+    \item For dense Transformers, a rough compute model is
+    \[
+    C \approx 6ND.
+    \]
+    \item Kaplan et al.\ argued that bigger models were especially powerful; Chinchilla agreed on power laws but revised the compute-optimal allocation between parameters and data.
+    \item Scaling-law experiments are done by training many smaller models, measuring loss, and extrapolating on log-log plots.
+    \item You should refit scaling laws in your own setting if your data quality, architecture, or optimizer meaningfully differs.
+    \item Loss and perplexity are smooth and useful, but they are increasingly weak proxies for capability, reasoning, and safety.
+    \item Emergent behaviors discussed in this lecture include few-shot in-context learning and chain-of-thought reasoning.
+    \item Some emergence claims may be artifacts of how capability is measured.
+    \item Current progress goes beyond pure scaling: post-training, better inductive biases, reasoning strategies, and tool use are now major axes of improvement.
+\end{itemize}
+
+\end{document}

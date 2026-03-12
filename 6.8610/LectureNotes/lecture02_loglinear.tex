@@ -1,0 +1,315 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{enumitem}
+\usepackage{hyperref}
+
+\setlist[itemize]{topsep=4pt, itemsep=2pt, parsep=0pt}
+
+\title{6.8610 Spring 2026 Lecture 2 Notes: Log-Linear Language Models and Word Embeddings}
+\author{}
+\date{February 5, 2026}
+
+\begin{document}
+\maketitle
+
+\section{Log-Linear Language Models and Word Embeddings}
+
+\subsection{Motivation}
+The lecture introduces the first concrete family of language models used in the course: \textbf{log-linear models}. The core problem is to replace the impossible ``one parameter for every possible context'' view of language modeling with a tractable function approximator.
+
+\begin{itemize}
+    \item A language model needs to estimate probabilities of next tokens conditioned on preceding context.
+    \item A naive table of probabilities over all possible contexts grows exponentially with sequence length and is unusable.
+    \item Log-linear models provide the simplest useful replacement: a softmax over linear scores.
+    \item Historically, language models were often used as components inside larger systems such as machine translation, rather than as end-to-end systems on their own.
+    \item The lecture then asks how to improve fixed hand-designed context representations, leading to \textbf{word embeddings} and the \textbf{word2vec} family of models.
+\end{itemize}
+
+\subsection{Key Concepts}
+\textbf{Definition: Log-Linear Language Model}
+
+A log-linear language model predicts the next token by assigning a linear score to each vocabulary item and normalizing with a softmax.
+
+\begin{itemize}
+    \item \textbf{Language-model recap:} we want to model
+    \[
+    p_\theta(x_{1:T}) = \prod_{t=1}^{T} p_\theta(x_t \mid x_{1:t-1})
+    \]
+    and therefore need a model of \(p_\theta(x_t \mid x_{1:t-1})\).
+    \item \textbf{Historical motivation from translation:} older systems often used Bayes' rule to combine a translation model with a language model:
+    \[
+    p(y \mid x) \propto p(x \mid y)\, p(y)
+    \]
+    where \(p(y)\) is a language model over target-language strings.
+    \item \textbf{What a good language model must know:}
+    \begin{itemize}
+        \item grammar,
+        \item factual knowledge,
+        \item common-sense regularities about the world.
+    \end{itemize}
+    \item \textbf{Prompting view:} once a language model can condition on arbitrary context and continue that context, prompting becomes a general interface for many downstream tasks.
+    \item \textbf{Feature representation \(\phi(x)\):} since contexts are variable-length strings, log-linear models require a fixed-dimensional representation of the context before scoring outputs.
+    \item \textbf{Softmax / multinomial logistic regression:} the model used here is the multiclass generalization of logistic regression.
+    \item \textbf{Embedding models:} instead of using a fixed hand-engineered \(\phi(x)\), we can learn low-dimensional vector representations of words directly from data.
+\end{itemize}
+
+\subsection{Core Models and Equations}
+\textbf{Autoregressive factorization.}
+\[
+p_\theta(x_{1:T}) = \prod_{t=1}^{T} p_\theta(x_t \mid x_{1:t-1})
+\]
+
+\textbf{Naive scalar parameterization is intractable.} If vocabulary size is \(V\), explicit tables require on the order of
+\[
+\sum_{t=1}^{T} V^t
+\]
+parameters.
+
+\textbf{Log-linear next-token model.} Let \(x\) denote the input context and \(y\) the next token. Then
+\[
+p_\theta(y \mid x) = \frac{\exp\!\left(\theta_y^\top \phi(x)\right)}
+{\sum_{y' \in V} \exp\!\left(\theta_{y'}^\top \phi(x)\right)}
+\]
+where:
+\begin{itemize}
+    \item \(\phi(x)\) is a fixed-dimensional representation of the context,
+    \item \(\theta_y\) is the parameter vector associated with output token \(y\),
+    \item \(V\) is the vocabulary.
+\end{itemize}
+
+\textbf{Log-likelihood objective.}
+\[
+\max_\theta \sum_{(x,y)} \log p_\theta(y \mid x)
+\]
+
+For a single example,
+\[
+\log p_\theta(y \mid x) = \theta_y^\top \phi(x) - \log \sum_{y' \in V} \exp\!\left(\theta_{y'}^\top \phi(x)\right)
+\]
+Define the partition function
+\[
+Z(x) = \sum_{y' \in V} \exp\!\left(\theta_{y'}^\top \phi(x)\right)
+\]
+so that
+\[
+\log p_\theta(y \mid x) = \theta_y^\top \phi(x) - \log Z(x).
+\]
+
+\textbf{Gradient of the log-likelihood.} For a particular token \(y_0\),
+\[
+\nabla_{\theta_{y_0}} \log p_\theta(y \mid x)
+= \left(\mathbf{1}[y=y_0] - p_\theta(y_0 \mid x)\right)\phi(x).
+\]
+This gives the key update intuition:
+\begin{itemize}
+    \item if \(y_0\) is the true next token, move \(\theta_{y_0}\) toward \(\phi(x)\);
+    \item otherwise, move \(\theta_{y_0}\) away from \(\phi(x)\).
+\end{itemize}
+
+\textbf{Bag-of-words representations.}
+
+Indicator bag-of-words maps a document to a \(V\)-dimensional vector whose entries indicate whether each token appeared.
+
+Count bag-of-words uses token counts instead of binary indicators.
+
+\textbf{Term frequency-inverse document frequency (TF-IDF).} The lecture motivates downweighting common function words. Here \(\operatorname{TF}\) denotes term frequency and \(\operatorname{IDF}\) inverse document frequency.
+\[
+\operatorname{TF}(w,d) = \text{count of } w \text{ in document } d
+\]
+\[
+\operatorname{IDF}(w) = \log \frac{N}{\operatorname{df}(w)}
+\]
+where \(N\) is the number of documents in the corpus and \(\operatorname{df}(w)\) is the number of documents containing \(w\). Then
+\[
+\operatorname{TFIDF}(w,d) = \operatorname{TF}(w,d)\operatorname{IDF}(w).
+\]
+
+\textbf{Skip-gram model.} Learn an input embedding \(w_x\) and an output embedding \(u_y\):
+\[
+p(y \mid x) = \frac{\exp\!\left(u_y^\top w_x\right)}
+{\sum_{y' \in V} \exp\!\left(u_{y'}^\top w_x\right)}.
+\]
+This predicts a context word \(y\) from a center word \(x\).
+
+\textbf{Continuous bag-of-words (CBOW) model.} Predict a target word from a set of context words:
+\[
+p(y \mid x) = \frac{\exp\!\left(u_y^\top \left(\frac{1}{|x|}\sum_{x_i \in x} w_{x_i}\right)\right)}
+{\sum_{y' \in V} \exp\!\left(u_{y'}^\top \left(\frac{1}{|x|}\sum_{x_i \in x} w_{x_i}\right)\right)}.
+\]
+If we define
+\[
+W(x) = \frac{1}{|x|}\sum_{x_i \in x} w_{x_i},
+\]
+then
+\[
+\log p(y \mid x) = u_y^\top W(x) - \log \sum_{y' \in V} \exp\!\left(u_{y'}^\top W(x)\right).
+\]
+
+\textbf{CBOW gradient intuition.}
+\[
+\nabla_{u_{y_0}} \log p(y \mid x)
+= \left(\mathbf{1}[y=y_0] - p(y_0 \mid x)\right) W(x).
+\]
+Thus co-occurring words and contexts are pulled together in embedding space, while non-co-occurring pairs are pushed apart.
+
+\textbf{Pointwise mutual information (PMI) connection.} For skip-gram and related embedding schemes, the learned embeddings approximately satisfy
+\[
+u_y^\top w_x \approx \log \frac{p(x,y)}{p(x)p(y)} - c
+\]
+for some constant \(c\). Thus dot products approximate \textbf{pointwise mutual information (PMI)}.
+
+\subsection{Algorithms / Architectures}
+\textbf{1. Build a fixed-feature log-linear LM}
+\begin{itemize}
+    \item Tokenize the corpus.
+    \item Convert each training position into a supervised example \((x,y)\), where \(x\) is a context and \(y\) is the observed next token.
+    \item Construct a fixed-dimensional context representation \(\phi(x)\).
+    \item Score each candidate next token with \(\theta_y^\top \phi(x)\).
+    \item Normalize scores with a softmax.
+    \item Maximize log-likelihood with gradient-based optimization.
+\end{itemize}
+
+\textbf{2. Bag-of-words feature construction}
+\begin{itemize}
+    \item Start with token IDs.
+    \item Build a vocabulary-sized vector.
+    \item Fill it with either indicators or counts.
+    \item Optionally apply TF-IDF weighting to reduce the impact of words that appear in nearly every document.
+\end{itemize}
+
+\textbf{3. Skip-gram training}
+\begin{itemize}
+    \item Choose a context window around each token.
+    \item Treat the center word as input.
+    \item Treat neighboring words as outputs.
+    \item For each input-output pair, optimize the softmax probability of the output given the input.
+    \item Learn input embeddings \(w\) and output embeddings \(u\).
+\end{itemize}
+
+\textbf{4. CBOW training}
+\begin{itemize}
+    \item Choose a context window around each target word.
+    \item Average or sum the embeddings of the surrounding words.
+    \item Use the resulting vector as the context representation.
+    \item Predict the center word with a softmax over the vocabulary.
+\end{itemize}
+
+\textbf{5. Using learned embeddings downstream}
+\begin{itemize}
+    \item Train embeddings on large unlabeled text.
+    \item Reuse them as input features for tasks such as sentiment classification, translation, or other NLP systems.
+    \item This replaces hand-engineered sparse vectors with dense learned representations.
+\end{itemize}
+
+\subsection{Important Intuitions from the Professor}
+\begin{itemize}
+    \item \textbf{A strong language model must know much more than local syntax.} It implicitly needs grammar, factual knowledge, and common sense in order to assign high probability to real text.
+    \item \textbf{Prompting is just conditional continuation.} This is the core modern perspective: many tasks become ``provide context, then continue it.''
+    \item \textbf{The gradient has a geometric interpretation.} Training repeatedly moves parameter vectors toward contexts that support them and away from contexts that do not.
+    \item \textbf{Bag-of-words is mostly about topical signal, not grammatical signal.} It can infer what a document is about but not what word should come next in a well-formed sentence.
+    \item \textbf{Word2vec was historically important even though it is a poor generator.} Its importance was that it learned useful word representations, not that it generated fluent text.
+    \item \textbf{The role of embeddings was originally transfer.} People first used these models to pretrain vectors that later improved other supervised NLP systems.
+    \item \textbf{Finite windows are a real modeling choice.} Skip-gram and CBOW only learn relationships within a chosen context radius; anything outside that window is invisible.
+    \item \textbf{Embedding geometry is not magic.} The lecture argues that analogies and manifolds arise because low-rank factorization of co-occurrence structure induces meaningful latent directions.
+\end{itemize}
+
+\subsection{Examples}
+\begin{itemize}
+    \item \textbf{Grammar example:}
+    \[
+    \text{``The cats under the sofa \_\_\_''}
+    \]
+    A good model should prefer ``purr'' over ``purrs.''
+    \item \textbf{Factual knowledge example:}
+    \[
+    \text{``Daniel Akaka was born in \_\_\_''}
+    \]
+    The lecture contrasts ``Honolulu'' with ``Chicago.''
+    \item \textbf{Common-sense example:}
+    \[
+    \text{``If you drop an egg it will \_\_\_''}
+    \]
+    A realistic model should favor ``break'' over ``bounce.''
+    \item \textbf{Machine translation decomposition:} a target sentence can be chosen using a crude translation model plus a language model that prefers fluent target-language strings.
+    \item \textbf{Baseball bag-of-words example:} counts of words such as ``Chicago,'' ``Cubs,'' and ``baseball'' reveal topic; TF-IDF suppresses overly common words such as ``the.''
+    \item \textbf{Skip-gram / CBOW example:} from the Dickens sentence
+    \[
+    \text{``it is a far, far better rest that I go to, than I have ever known''}
+    \]
+    skip-gram predicts nearby words from a center word, while CBOW predicts the center word from neighboring words.
+    \item \textbf{Embedding analogies:}
+    \[
+    \text{MIT} - \text{east\_coast} + \text{west\_coast} \approx \text{Caltech}
+    \]
+    \[
+    \text{MIT} - \text{sciences} + \text{humanities} \approx \text{Harvard}
+    \]
+    \item \textbf{Country-city and geography structure:} pairs such as France/Paris and Italy/Rome occupy similar relative positions; nearby countries may also form smooth low-dimensional manifolds.
+    \item \textbf{Color grounding example:} color words cluster in embedding space in ways that align with perceptual similarity, despite the model never seeing images.
+\end{itemize}
+
+\subsection{Common Pitfalls / Limitations}
+\begin{itemize}
+    \item \textbf{No word order in bag-of-words, skip-gram, or CBOW.} These models cannot represent syntax-sensitive phenomena that depend on position.
+    \item \textbf{Sparse fixed features do not share input-side similarity.} ``good'' and ``great'' begin as unrelated coordinates unless the model learns some indirect output association.
+    \item \textbf{Vocabulary-scale issues remain.} Sparse bag-of-words features still grow with vocabulary size.
+    \item \textbf{Finite context windows lose long-range dependencies.} Words outside the training window do not affect the learned relation.
+    \item \textbf{Poor open-ended generation.} Sampling from these models produces incoherent word salad because they lack order-sensitive compositional structure.
+    \item \textbf{Embedding geometry is approximate and noisy.} Analogies and manifolds are trends, not exact symbolic facts.
+    \item \textbf{Separate input and output embeddings add flexibility but also more parameters.} They are not always necessary.
+\end{itemize}
+
+\subsection{Connections to Other Lectures}
+\begin{itemize}
+    \item This lecture directly builds on Lecture 1's setup of language modeling as learning
+    \[
+    p_\theta(x_t \mid x_{1:t-1}).
+    \]
+    The new ingredient is a concrete parameterization.
+    \item The fixed-feature log-linear model is the first answer to Lecture 1's open question: how should we parameterize next-token probabilities without explicit tables?
+    \item The embedding discussion anticipates later neural models: dense continuous representations become the basic input objects for RNNs, attention, and Transformers.
+    \item The lecture ends by highlighting the missing ingredient, \textbf{word order}, which motivates the next class and the broader move toward sequence models that truly model compositional structure over time.
+    \item The PMI discussion foreshadows later themes in representation learning: much of modern NLP can be interpreted as learning compressed structure from co-occurrence statistics.
+\end{itemize}
+
+\subsection{Exam-Relevant Summary}
+\begin{itemize}
+    \item \textbf{Translation motivation:}
+    \[
+    p(y \mid x) \propto p(x \mid y)p(y)
+    \]
+    where \(p(y)\) is the language model.
+    \item \textbf{Log-linear LM:}
+    \[
+    p_\theta(y \mid x) = \frac{\exp(\theta_y^\top \phi(x))}{\sum_{y'} \exp(\theta_{y'}^\top \phi(x))}
+    \]
+    \item \textbf{Log-likelihood form:}
+    \[
+    \log p_\theta(y \mid x) = \theta_y^\top \phi(x) - \log \sum_{y'} \exp(\theta_{y'}^\top \phi(x))
+    \]
+    \item \textbf{Gradient:}
+    \[
+    \nabla_{\theta_{y_0}} \log p_\theta(y \mid x)
+    = \left(\mathbf{1}[y=y_0] - p_\theta(y_0 \mid x)\right)\phi(x)
+    \]
+    \item \textbf{Bag-of-words variants:} indicators, counts, TF-IDF.
+    \item \textbf{TF-IDF intuition:} emphasize words frequent in one document but rare across the corpus.
+    \item \textbf{Bag-of-words strengths:} topical information.
+    \item \textbf{Bag-of-words weakness:} no word order, poor generation, sparse features.
+    \item \textbf{Skip-gram:} predict context from a center word.
+    \item \textbf{CBOW:} predict a target word from surrounding context.
+    \item \textbf{Embeddings reduce parameters:} from roughly \(O(|V|^2)\) to \(O(|V|d)\) with embedding dimension \(d\).
+    \item \textbf{PMI result:}
+    \[
+    u_y^\top w_x \approx \log \frac{p(x,y)}{p(x)p(y)} - c
+    \]
+    \item \textbf{Key limitation of all models in this lecture:} they do not model word order.
+    \item \textbf{Historical importance:} these models were foundational because they learned reusable dense word representations that improved downstream NLP.
+\end{itemize}
+
+\end{document}

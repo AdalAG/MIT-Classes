@@ -1,0 +1,249 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{enumitem}
+\usepackage{hyperref}
+
+\setlist[itemize]{topsep=4pt, itemsep=2pt, parsep=0pt}
+
+\title{6.8610 Spring 2026 Lecture 6 Notes: Pretraining and Fine-Tuning}
+\author{Junru Ren with help from Codex}
+\date{February 24, 2026}
+
+\begin{document}
+\maketitle
+
+\section{Pretraining and Fine-Tuning}
+
+\subsection{Motivation}
+The lecture studies the modern transfer-learning pipeline for NLP: instead of training a system from scratch on a small task-specific dataset, first train a large general-purpose model and then adapt it to downstream tasks with much less specialized data.
+
+\begin{itemize}
+    \item Training a customer-service or task-oriented chatbot from scratch would require a dataset that teaches the model \emph{everything}: tokenization, syntax, conversation structure, politeness, domain knowledge, and task behavior.
+    \item Collecting that much task-specific data is expensive and slow, especially when it requires skilled annotators.
+    \item Pretraining solves this by learning general language and world knowledge from a large corpus, while fine-tuning communicates the task-specific behavior we actually want.
+    \item Once pretraining enters the picture, the \textbf{optimization path} matters more. We are no longer just asking for any minimum of the loss; we want a basin from which small downstream updates generalize instead of merely memorizing.
+    \item In practice, useful systems often require multiple adaptation stages rather than a single train-then-deploy step.
+\end{itemize}
+
+\subsection{Key Concepts}
+\textbf{Definition: Pretraining}
+
+Pretraining is the process of optimizing a model on a large, general-purpose corpus so that it learns broadly useful representations of language and related structure before any specific downstream task is imposed.
+
+\textbf{Definition: Fine-Tuning}
+
+Fine-tuning is the process of continuing training from a pretrained initialization on a smaller task- or domain-specific dataset in order to specialize the model's behavior.
+
+\begin{itemize}
+    \item \textbf{Base model:} a model pretrained on broad text that can model language fluently but is not reliably instruction-following or question-answering useful.
+    \item \textbf{Instruction tuning:} fine-tuning a base model so that it responds usefully to natural-language prompts, questions, or task instructions.
+    \item \textbf{In-context learning:} the ability to infer a task from examples or input-output pairs placed directly in the prompt; this can emerge from pretraining but can also be explicitly strengthened.
+    \item \textbf{Refusal / unlearning:} a major goal of post-pretraining adaptation is to disable undesirable outputs, though in practice this often behaves more like \emph{refusal} than genuine forgetting.
+    \item \textbf{Continued pretraining:} keep training on in-domain unlabeled text before or alongside downstream supervised fine-tuning.
+    \item \textbf{Synthetic fine-tuning data:} use a stronger model to generate question-answer (QA) pairs, instructions, or additional domain documents when human-labeled data is scarce.
+    \item \textbf{Data mixing:} pretraining corpora are engineered mixtures, not just arbitrary web scrapes.
+    \item \textbf{Quality filtering:} remove low-quality or harmful text and keep samples that resemble trusted sources.
+    \item \textbf{Parameter-efficient fine-tuning (PEFT):} adapt only a small subset of model parameters, such as bias terms or layer-normalization parameters, while leaving the rest frozen.
+    \item \textbf{Shallow fine-tuning:} many downstream updates appear to surface or reweight capabilities already learned in pretraining rather than build new capabilities from scratch.
+\end{itemize}
+
+\subsection{Core Models and Equations}
+\textbf{Transfer-learning pipeline.} Let \(D_{\mathrm{PT}}\) be a pretraining (PT) corpus and \(D_{\mathrm{FT}}\) a fine-tuning (FT) downstream dataset. A standard abstraction is
+\[
+\theta_{\mathrm{PT}}
+=
+\arg\max_{\theta}\sum_{(x,y)\in D_{\mathrm{PT}}}\log p_{\theta}(y \mid x),
+\]
+followed by
+\[
+\theta_{\mathrm{FT}}
+=
+\arg\max_{\theta}\sum_{(x,y)\in D_{\mathrm{FT}}}\log p_{\theta}(y \mid x)
+\quad\text{initialized at } \theta=\theta_{\mathrm{PT}}.
+\]
+The lecture explicitly emphasized that the initialization matters because the optimizer is now navigating a highly nonconvex landscape.
+
+\textbf{Gradient-descent view.} The slides wrote this in update form:
+\[
+\theta' \leftarrow \theta + \nabla_{\theta}\log p(y_{\mathrm{PT}} \mid x_{\mathrm{PT}}),
+\]
+\[
+\theta'' \leftarrow \theta' + \nabla_{\theta'}\log p(y_{\mathrm{FT}} \mid x_{\mathrm{FT}}).
+\]
+The point is not the exact optimizer, but that the downstream update starts from a non-random parameter setting.
+
+\textbf{Common pretraining objectives.}
+\begin{itemize}
+    \item \textbf{Autoregressive next-token prediction:}
+    \[
+    p_{\theta}(x_{1:T}) = \prod_{t=1}^{T} p_{\theta}(x_t \mid x_{1:t-1}).
+    \]
+    \item \textbf{Masked language modeling:}
+    \[
+    \max_{\theta} \sum_{t \in \mathcal{M}} \log p_{\theta}(x_t \mid x_{\setminus \mathcal{M}}),
+    \]
+    where \(\mathcal{M}\) is the set of masked positions.
+    \item \textbf{Infilling / fill-in-the-middle:}
+    \[
+    \max_{\theta}\log p_{\theta}(x_{\mathrm{missing}} \mid x_{\mathrm{prefix}}, x_{\mathrm{suffix}}).
+    \]
+    \item \textbf{Ranking / discrimination:}
+    \[
+    p_{\theta}(y=1 \mid s_1, s_2),
+    \]
+    where the model predicts whether a sentence or sentence pair is real, ordered correctly, or preferred over a corrupted alternative.
+\end{itemize}
+
+\textbf{Importance weighting for data mixing.} If \(\hat{p}_{\mathrm{PT}}\) is a language model fit to pretraining data and \(\hat{p}_{\mathrm{FT}}\) is fit to downstream data, one can weight each pretraining example \(x\) by
+\[
+w(x) = \frac{\hat{p}_{\mathrm{FT}}(x)}{\hat{p}_{\mathrm{PT}}(x)}.
+\]
+Then the effective resampled distribution is
+\[
+p_{\mathrm{PT}}(x)\, w(x)
+=
+p_{\mathrm{PT}}(x)\frac{\hat{p}_{\mathrm{FT}}(x)}{\hat{p}_{\mathrm{PT}}(x)}
+\approx
+p_{\mathrm{FT}}(x),
+\]
+which upweights pretraining samples that look more like the eventual target domain.
+
+\textbf{Adversarial reweighting intuition.} In methods such as DoReMi, one first trains a small reference model to identify hard subpopulations and then trains a larger model on an adversarially reweighted mixture. A representative form is
+\[
+\min_{\theta}\max_{q \in \Delta^K}
+\sum_{k=1}^{K} q_k \big(\mathcal{L}_k(\theta) - \mathcal{L}_k(\theta_{\mathrm{ref}})\big),
+\]
+where \(q\) concentrates weight on subsets that remain difficult.
+
+\textbf{Scaling laws.} The lecture did not dwell on formulas, but the core idea is that empirical loss obeys power-law behavior as a function of model size and dataset size. A representative abstraction is
+\[
+\mathcal{L}(N, D) \approx aN^{-\alpha} + bD^{-\beta} + c,
+\]
+where \(N\) is model size and \(D\) is dataset size.
+
+\subsection{Algorithms / Architectures}
+\textbf{1. Practical product pipeline}
+\begin{itemize}
+    \item Pretrain on large-scale text data.
+    \item Instruction-tune on many tasks so the model becomes useful as a general assistant.
+    \item Continue pretraining on in-domain text if the downstream domain is specialized.
+    \item Optionally generate synthetic in-domain data.
+    \item Fine-tune on human-written downstream examples.
+\end{itemize}
+
+\textbf{2. Choosing a pretraining objective}
+\begin{itemize}
+    \item Use autoregressive modeling when generation is central.
+    \item Use masked language modeling when bidirectional representations are valuable.
+    \item Use infilling when the deployment task resembles editing or code completion.
+    \item Use ranking or corruption-detection objectives when the goal is to learn transferable structure without full generation.
+\end{itemize}
+
+\textbf{3. Designing the pretraining corpus}
+\begin{itemize}
+    \item Start from sources that are legally usable and broad enough to teach general capabilities.
+    \item Mix sources intentionally rather than opportunistically.
+    \item Filter for quality using trusted high-quality corpora as positive examples.
+    \item Include code, metadata around code, and multilingual text when those capabilities are important.
+    \item Use scaling-law heuristics to balance model size and corpus size.
+\end{itemize}
+
+\textbf{4. Continued pretraining and downstream adaptation}
+\begin{itemize}
+    \item Continue language-model training on in-domain unlabeled text.
+    \item Fine-tune only on the outputs the model must generate at deployment time.
+    \item If labeled examples are scarce, synthesize instruction or QA pairs from domain documents.
+    \item If domain coverage is too narrow, synthesize additional plausible domain documents from the real corpus.
+\end{itemize}
+
+\textbf{5. Fine-tuning data selection}
+\begin{itemize}
+    \item Use influence-style methods to identify examples that most affect validation performance.
+    \item Alternatively, hand-curate a very small but high-quality set of examples.
+    \item Prefer quality over sheer volume when the base model is already strong.
+\end{itemize}
+
+\textbf{6. What parameters to update}
+\begin{itemize}
+    \item Update only embeddings in early transfer-learning setups.
+    \item Freeze the base model and train only conversion layers or a classifier head.
+    \item In modern PEFT, update only globally influential parameters such as bias terms or layer-normalization parameters.
+    \item In full fine-tuning, update all parameters, but the resulting behavioral changes can still remain shallow.
+\end{itemize}
+
+\subsection{Important Intuitions from the Professor}
+\begin{itemize}
+    \item \textbf{From-scratch training on task data is usually the wrong baseline.} The lecture repeatedly stressed that a downstream dataset should not be responsible for teaching both the task and the whole structure of language.
+    \item \textbf{Pretraining is partly about optimization geometry.} It is not just ``more data first.'' The initializer places the optimizer in a region where downstream updates can generalize.
+    \item \textbf{A base model is not a product.} Pretraining on internet text yields a model of language, but not necessarily a model that follows instructions or answers questions in useful ways.
+    \item \textbf{Code teaches more than code.} Training on code can improve reasoning and state-tracking behavior even on non-code tasks.
+    \item \textbf{Multilingual pretraining induces shared latent structure.} The lecture highlighted evidence that models learn language-independent abstractions such as noun/verb/adjective structure.
+    \item \textbf{Many modern improvements come from data design, not just model architecture.} Corpora must be mixed, filtered, and licensed intentionally.
+    \item \textbf{Fine-tuning often surfaces existing mechanisms rather than teaching new ones.} If a thousand examples or a tiny parameter subset can dramatically change behavior, that suggests the core machinery was already learned during pretraining.
+    \item \textbf{Refusal is fragile and not the same as forgetting.} Safety behavior can often be undone by tiny amounts of new fine-tuning or even by benign-seeming distributional shifts.
+    \item \textbf{Trying to force new knowledge into a model can backfire.} If the data is thin and inconsistent, the model may instead learn that guessing or regurgitating is acceptable, which can raise hallucination rates.
+\end{itemize}
+
+\subsection{Examples}
+\begin{itemize}
+    \item \textbf{Customer-service chatbot:} the motivating example throughout the lecture was a website assistant that needs politeness, style, task following, and company-specific knowledge.
+    \item \textbf{Word2vec-era transfer:} early systems pretrained embeddings and then froze them as initialization for downstream models.
+    \item \textbf{Infilling for code assistants:} delete a function or middle span from a codebase and train the model to reconstruct it from prefix and suffix context.
+    \item \textbf{BooksCorpus controversy:} BERT-era data pipelines relied on scraped ebooks whose permissions later became contentious, making some influential results hard to reproduce exactly.
+    \item \textbf{The Pile:} an open, permissively licensed, terabyte-scale corpus that contrasts with opaque corporate pretraining mixtures.
+    \item \textbf{Multilingual latent alignment:} multilingual models exhibit clustering by linguistic category rather than by language identity alone.
+    \item \textbf{Reversal Curse:} fine-tuning can teach a fact in one direction, such as ``Daphne Barrington directed \emph{A Journey Through Time},'' without teaching the reversed query reliably.
+    \item \textbf{Unexpected cross-task transfer:} training on buggy code can induce bizarre behavioral changes, including shifts in the model's apparent personality.
+    \item \textbf{Hallucination from overteaching:} pushing too hard on fine-tuning for facts the model did not deeply know can reduce held-out accuracy and encourage unsupported guesses.
+\end{itemize}
+
+\subsection{Common Pitfalls / Limitations}
+\begin{itemize}
+    \item \textbf{Data licensing and reproducibility problems:} if the training mixture cannot legally be released, the scientific result may become difficult or impossible to reproduce exactly.
+    \item \textbf{Poor corpus design:} indiscriminately scraping text can waste compute on low-quality, stale, or harmful data.
+    \item \textbf{Synthetic data limits:} synthetic pretraining may not teach world knowledge, social structure, or the nuanced pragmatics of real language.
+    \item \textbf{Temporal staleness:} both natural-language facts and codebases change over time, so pretraining alone can leave a model outdated.
+    \item \textbf{Fine-tuning brittleness:} safety and refusal behaviors can be reversed by small downstream changes.
+    \item \textbf{Logical incompleteness:} learning one direction of a relation does not guarantee learning its reverse or broader implications.
+    \item \textbf{Unexpected side effects:} fine-tuning on one domain can change unrelated behaviors.
+    \item \textbf{Hallucination risk:} trying to teach new facts with insufficiently rich data can make the model more willing to invent answers.
+\end{itemize}
+
+\subsection{Connections to Other Lectures}
+\begin{itemize}
+    \item This lecture ties back to Lecture 2, where word2vec already introduced the idea of learning useful representations from one task and reusing them elsewhere.
+    \item It builds directly on Lecture 3 and Lecture 4, because modern pretraining and fine-tuning are overwhelmingly implemented with sequence models and especially Transformers.
+    \item The lecture revisits BERT from Lecture 4 as an example of a pretraining objective designed for transferable representations rather than direct generation.
+    \item It also connects to Lecture 5 on evaluation: pretraining corpora, continued pretraining, instruction tuning, and safety fine-tuning all require careful validation of what behavior actually changed.
+    \item Conceptually, this lecture marks the shift from \emph{how to parameterize a model} to \emph{how to use staged training and data design to make that model useful}.
+\end{itemize}
+
+\subsection{Exam-Relevant Summary}
+\begin{itemize}
+    \item Pretraining learns general-purpose language capabilities; fine-tuning adapts those capabilities to specific tasks or domains.
+    \item The practical product pipeline is often:
+    \[
+    \text{pretrain} \rightarrow \text{instruction tune} \rightarrow \text{in-domain continued pretrain} \rightarrow \text{task-specific fine-tune}.
+    \]
+    \item Important pretraining objectives include next-token prediction, masked language modeling, infilling, and ranking/corruption detection.
+    \item Importance weighting for domain adaptation uses
+    \[
+    w(x)=\frac{\hat{p}_{\mathrm{FT}}(x)}{\hat{p}_{\mathrm{PT}}(x)}
+    \]
+    to upweight pretraining samples that resemble the downstream domain.
+    \item Data mixtures should be designed, filtered, and legally usable; they are not merely arbitrary internet dumps.
+    \item Training on code can improve non-code reasoning; multilingual pretraining can induce shared cross-lingual representations.
+    \item Continued pretraining on in-domain unlabeled text often gives consistent gains before final supervised fine-tuning.
+    \item Very small, carefully curated instruction datasets can rival much larger noisy ones.
+    \item Parameter-efficient fine-tuning can update only a tiny subset of parameters and still strongly change behavior.
+    \item Fine-tuning is often shallow: it mostly surfaces or steers capabilities already learned in pretraining.
+    \item Refusal and unlearning are fragile; they usually do not erase underlying knowledge.
+    \item Overaggressive fact fine-tuning can increase hallucination by teaching the model that unsupported guessing is acceptable.
+\end{itemize}
+
+\end{document}

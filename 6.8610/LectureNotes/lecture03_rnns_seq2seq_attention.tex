@@ -1,0 +1,353 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{enumitem}
+\usepackage{hyperref}
+
+\setlist[itemize]{topsep=4pt, itemsep=2pt, parsep=0pt}
+
+\title{6.8610 Spring 2026 Lecture 3 Notes: Recurrent Neural Networks, Seq2Seq, and Attention}
+\author{Junru Ren with help from Codex}
+\date{February 10, 2026}
+
+\begin{document}
+\maketitle
+
+\section{Recurrent Neural Networks, Seq2Seq, and Attention}
+
+\subsection{Motivation}
+The lecture introduces \textbf{recurrent neural networks (RNNs)} as the first neural architecture in the course that is explicitly designed for sequential data. The immediate motivation is that feed-forward models with fixed windows are poorly matched to language: they do not retain state across predictions, they scale poorly with larger contexts, and they struggle with long-range dependencies.
+
+\begin{itemize}
+    \item Language is fundamentally sequential: characters form words, words form sentences, and sentences form larger discourse units.
+    \item Many important linguistic phenomena depend on long-range context. For example, pronoun choice in ``Emily \dots proud of her'' versus ``Miguel \dots proud of him'' depends on a word many tokens earlier.
+    \item Feed-forward models can use nonlinearities, but they still rely on fixed context windows and do not maintain memory from one prediction to the next.
+    \item RNNs address this by carrying forward a hidden state that summarizes prior context.
+    \item Once RNNs are available, they can be extended from next-token prediction to more general sequence modeling, including variable-length input/output tasks such as machine translation.
+    \item This leads naturally to \textbf{sequence-to-sequence (seq2seq)} models and then to \textbf{attention}, which solves the bottleneck of compressing the entire source sentence into a single vector.
+\end{itemize}
+
+\subsection{Key Concepts}
+\textbf{Definition: Word Token vs.\ Word Type}
+
+A \textbf{word token} is a specific occurrence of a word in text, while a \textbf{word type} is the unique lexical form. For example, in ``I ran and ran and ran'' there are 6 word tokens but only 3 word types.
+
+\begin{itemize}
+    \item \textbf{Type-based vs.\ token-based representations:}
+    \begin{itemize}
+        \item Word2vec-style embeddings are type-based: every occurrence of a word like ``bank'' shares one representation.
+        \item RNN hidden states are token-based or contextualized: each occurrence of a word gets a context-specific representation.
+    \end{itemize}
+    \item \textbf{Feed-forward language models are limited:}
+    \begin{itemize}
+        \item fixed input length,
+        \item no state carried across predictions,
+        \item parameter count grows with window size,
+        \item no natural parameter sharing across positions,
+        \item effectively bag-of-words unless position is encoded explicitly.
+    \end{itemize}
+    \item \textbf{Masked vs.\ autoregressive feed-forward modeling:} with a fixed window, a feed-forward network can either predict a missing token from surrounding context or predict the next token from only the left context. The autoregressive version is the one that directly defines a left-to-right sequence model.
+    \item \textbf{RNN core idea:} use the previous hidden state together with the current input to compute the new hidden state.
+    \item \textbf{Hidden state as meaning summary:} the hidden representation is meant to encode the meaning of the sequence seen so far.
+    \item \textbf{Teacher forcing:} during training, the model receives the true previous token rather than its own predicted token.
+    \item \textbf{Backpropagation through time (BPTT):} training an RNN requires propagating gradients backward through the unrolled sequence.
+    \item \textbf{Truncated BPTT:} for efficiency, backpropagation may be limited to a finite recent window while the forward pass still carries recurrent state.
+    \item \textbf{Sequence-to-sequence (Seq2Seq):} use one RNN as an encoder for the source sequence and another as a decoder for the target sequence.
+    \item \textbf{Attention:} let each decoder step compute a weighted summary of all encoder hidden states, rather than relying only on the final encoder state.
+\end{itemize}
+
+\subsection{Core Models and Equations}
+\textbf{Feed-forward language model recap.} For a fixed context representation \(X\),
+\[
+h = \phi(WX + b_h)
+\]
+\[
+\hat{y} = \operatorname{softmax}(Uh + b_y)
+\]
+This allows nonlinear combination of a fixed window, but it does not maintain sequential state.
+
+\textbf{Feed-forward masked vs.\ autoregressive objectives.} With a fixed-size window, one can train the same feed-forward architecture in two different ways:
+\begin{itemize}
+    \item \textbf{Masked language modeling:} hide a token and predict it from both left and right context,
+    \[
+    p_\theta(x_t \mid x_{t-k:t-1}, x_{t+1:t+k}).
+    \]
+    \item \textbf{Autoregressive language modeling:} predict the next token from only the previous context,
+    \[
+    p_\theta(x_t \mid x_{t-k:t-1}).
+    \]
+\end{itemize}
+The lecture explicitly contrasted these two views: a masked objective can learn useful contextual representations, but only the autoregressive formulation directly supports a normalized left-to-right probability for the whole sequence \(p(x_{1:T})\).
+
+\textbf{Basic RNN update.} For input embedding \(x_t\), hidden state \(h_t\), and output distribution \(\hat{y}_t\),
+\[
+h_t = f(Wx_t + Vh_{t-1} + b_h)
+\]
+\[
+\hat{y}_t = \operatorname{softmax}(Uh_t + b_y)
+\]
+with initial state typically set to
+\[
+h_0 = \mathbf{0}.
+\]
+
+\textbf{Cross-entropy (CE) loss at each timestep.}
+\[
+\operatorname{CE}(y_t,\hat{y}_t) = - \sum_{j \in V} y_{t,j}\log \hat{y}_{t,j}
+\]
+where \(V\) is the vocabulary and \(y_t\) is the one-hot gold distribution.
+
+\textbf{Sequence loss.}
+\[
+\mathcal{L} = \sum_{t=1}^{T} \operatorname{CE}(y_t,\hat{y}_t)
+\]
+
+\textbf{Backpropagation through time intuition.} Because \(h_t\) depends recursively on earlier states, gradients to earlier recurrent weights involve long chains of multiplications. Abstractly,
+\[
+\frac{\partial \mathcal{L}_T}{\partial h_k}
+= \frac{\partial \mathcal{L}_T}{\partial h_T}
+\prod_{t=k+1}^{T}
+\frac{\partial h_t}{\partial h_{t-1}}
+\]
+which explains why gradients may vanish or explode.
+
+\textbf{Gradient clipping.} If gradient norm exceeds threshold \(\tau\), rescale:
+\[
+g \leftarrow g \cdot \min\left(1, \frac{\tau}{\lVert g \rVert}\right)
+\]
+This preserves direction while limiting magnitude.
+
+\textbf{Seq2Seq encoder-decoder formulation.}
+\begin{itemize}
+    \item The encoder consumes source tokens \(x_1,\dots,x_N\) and produces hidden states \(h^{enc}_1,\dots,h^{enc}_N\).
+    \item In the basic seq2seq model, the final encoder hidden state initializes the decoder:
+    \[
+    h^{dec}_0 = h^{enc}_N
+    \]
+    \item The decoder then produces target tokens \(y_1,\dots,y_M\) autoregressively:
+    \[
+    h^{dec}_t = f(W_y y_{t-1} + V h^{dec}_{t-1} + b)
+    \]
+    \[
+    \hat{y}_t = \operatorname{softmax}(U h^{dec}_t + b_y)
+    \]
+\end{itemize}
+
+\textbf{Attention scores.} For decoder state \(h^{dec}_t\) and encoder state \(h^{enc}_i\), compute a raw compatibility score
+\[
+e_{t,i} = \operatorname{score}(h^{dec}_t, h^{enc}_i)
+\]
+where the score function can be a feed-forward network, a dot product, or another learned similarity function.
+
+\textbf{Popular attention scoring functions.} Common choices include:
+\begin{itemize}
+    \item \textbf{Additive / concat scoring:}
+    \[
+    e_{t,i} = v_a^\top \tanh\!\left(W_a [h^{dec}_t; h^{enc}_i]\right).
+    \]
+    \item \textbf{Bilinear / general scoring:}
+    \[
+    e_{t,i} = (h^{dec}_t)^\top W_a h^{enc}_i.
+    \]
+    \item \textbf{Dot-product scoring:}
+    \[
+    e_{t,i} = (h^{dec}_t)^\top h^{enc}_i.
+    \]
+\end{itemize}
+The transcript emphasized the tradeoff between flexibility and efficiency: more expressive learned scorers are possible, but dot-product scoring became especially attractive because it is simple, fast, and works well at scale.
+
+\textbf{Attention weights.}
+\[
+a_{t,i} = \frac{\exp(e_{t,i})}{\sum_{j=1}^{N}\exp(e_{t,j})}
+\]
+These weights form a distribution over source positions for each decoder step \(t\).
+
+\textbf{Context vector.}
+\[
+c_t = \sum_{i=1}^{N} a_{t,i} h^{enc}_i
+\]
+This is a weighted summary of the encoder hidden states.
+
+\textbf{Decoder with attention.} The output at decoder step \(t\) is based on both the current decoder state and the context vector:
+\[
+\hat{y}_t = g(h^{dec}_t, c_t)
+\]
+where \(g\) may be implemented by concatenation followed by an affine transformation and softmax.
+
+\textbf{Historical machine-translation framing.} Before neural seq2seq systems, translation was often written as
+\[
+p(y \mid x) \propto p(x \mid y)p(y)
+\]
+with a separate translation model and target-language model. Neural machine translation replaced this pipeline with a single end-to-end encoder-decoder model.
+
+\subsection{Algorithms / Architectures}
+\textbf{1. Feed-forward masked and autoregressive prediction}
+\begin{itemize}
+    \item Choose a fixed-size context window.
+    \item For a masked objective, remove one token and predict it from its surrounding context.
+    \item For an autoregressive objective, keep only the left context and predict the next token.
+    \item Convert the visible context into embeddings or a fixed feature vector.
+    \item Pass it through one or more feed-forward layers.
+    \item Predict the target token with a softmax over the vocabulary.
+    \item Repeat with a sliding window over the corpus.
+\end{itemize}
+
+\textbf{2. RNN forward pass}
+\begin{itemize}
+    \item Initialize \(h_0\), often to zeros.
+    \item For each token \(x_t\), compute \(h_t\) from the current input and previous hidden state.
+    \item Produce \(\hat{y}_t\) from \(h_t\).
+    \item Interpret \(h_t\) as the contextualized representation of the sequence prefix up to \(t\).
+\end{itemize}
+
+\textbf{3. RNN training}
+\begin{itemize}
+    \item Feed the gold token sequence one token at a time.
+    \item Compute a prediction at each timestep.
+    \item Evaluate cross-entropy against the gold next token.
+    \item Sum losses across timesteps.
+    \item Run BPTT to update \(W\), \(V\), \(U\), and optionally the input embedding matrix.
+    \item Use teacher forcing during training: feed the true previous token, not the model's sampled output.
+\end{itemize}
+
+\textbf{4. Truncated BPTT}
+\begin{itemize}
+    \item Keep the normal recurrent forward pass.
+    \item Backpropagate only through the most recent \(T\) timesteps.
+    \item Update parameters periodically, for example every \(T\) tokens.
+    \item This limits compute without reducing the forward-pass memory to an \(n\)-gram window.
+\end{itemize}
+
+\textbf{5. RNN generation}
+\begin{itemize}
+    \item Begin with a special start token such as \texttt{<START>} or the beginning-of-sequence token \texttt{<BOS>}.
+    \item Produce a distribution over the next token from \(\hat{y}_1\).
+    \item Sample or choose the next token.
+    \item Feed that generated token back in as the next input.
+    \item Continue until generating an end-of-sequence token such as \texttt{<EOS>}.
+\end{itemize}
+
+\textbf{6. Seq2Seq translation}
+\begin{itemize}
+    \item Run the encoder over the source sentence.
+    \item Use the final encoder state to initialize the decoder.
+    \item Start the decoder with a start symbol.
+    \item During training, input the gold previous target token to the decoder.
+    \item During testing, input the decoder's own previous prediction.
+    \item Stop when the decoder emits a stop token.
+\end{itemize}
+
+\textbf{7. Attention-augmented decoding}
+\begin{itemize}
+    \item For each decoder step, score the current decoder state against every encoder state.
+    \item Softmax the scores to produce attention weights.
+    \item Compute a weighted sum of encoder states to obtain \(c_t\).
+    \item Combine \(c_t\) with the decoder hidden state to predict the next target token.
+    \item Repeat for each output position, producing a different context vector at each decoder step.
+\end{itemize}
+
+\subsection{Important Intuitions from the Professor}
+\begin{itemize}
+    \item \textbf{RNNs are the first truly contextualized embedding model in the course.} The hidden states are not just intermediates; they are the contextualized token representations.
+    \item \textbf{Using bytes directly is possible but often an unnecessary uphill battle.} The professor emphasized that byte-level modeling makes meaning harder to recover because single bytes are not natural semantic units.
+    \item \textbf{Teacher forcing is not a minor implementation detail.} During training, feeding model predictions back into the decoder too early would mean learning from garbage outputs instead of the correct target sequence.
+    \item \textbf{Truncated BPTT does not mean truncated forward memory.} The model still carries recurrent state forward through long sequences; only the gradient computation is cut off.
+    \item \textbf{Long short-term memory (LSTM) networks were a pragmatic architectural repair.} They preserve the high-level RNN idea but add gating mechanisms to better preserve long-range information and mitigate vanishing gradients.
+    \item \textbf{Basic seq2seq has a severe bottleneck.} Expecting one final encoder vector to store the entire meaning of a sentence is ``wild,'' even if it works surprisingly well with enough data.
+    \item \textbf{Attention is named well because it formalizes selective focus.} Instead of freezing all meaning into one vector, the decoder can revisit the source and decide what matters at each output step.
+    \item \textbf{Attention is useful but not a perfect explanation of model behavior.} Attention heatmaps are informative, but they should not be mistaken for full causal interpretability.
+    \item \textbf{The exact attention scorer is a design choice.} The professor noted that one can use an MLP-style scorer, a dot product, or a linear transformation, but speed matters because the score is computed many times; in practice, simple dot-product forms often win.
+\end{itemize}
+
+\subsection{Examples}
+\begin{itemize}
+    \item \textbf{Long-range agreement example:} pronoun prediction in
+    \[
+    \text{``Emily earned the top grade \dots Everyone was proud of her''}
+    \]
+    versus
+    \[
+    \text{``Miguel earned the top grade \dots Everyone was proud of him''}
+    \]
+    requires preserving information from many tokens earlier.
+    \item \textbf{Feed-forward limitation:} a fixed-window network predicting the next word in ``Anqi was late for \_\_\_'' can use nonlinearities but still lacks persistent memory.
+    \item \textbf{RNN generation:} beginning with a start token, an RNN may generate text such as ``Sorry Harry shouted, panicking \dots'' one token at a time until an end token is produced.
+    \item \textbf{Seq2Seq translation example:}
+    \[
+    \text{The brown dog ran} \rightarrow \text{Le chien brun a couru}
+    \]
+    where the output length differs from the input length.
+    \item \textbf{Attention weighting example:} for the first decoder word, the model may assign weights such as \(0.51, 0.28, 0.14, 0.07\) over the encoder states, then form a weighted context vector.
+    \item \textbf{Applications beyond translation:}
+    \begin{itemize}
+        \item many-to-one sentiment classification,
+        \item one-to-one sequence tagging such as part-of-speech tagging,
+        \item constituency parsing,
+        \item image captioning with visual attention.
+    \end{itemize}
+\end{itemize}
+
+\subsection{Common Pitfalls / Limitations}
+\begin{itemize}
+    \item \textbf{Feed-forward networks do not model sequential state.} Every prediction is independent except for the manually provided window.
+    \item \textbf{RNNs are hard to parallelize.} Computation is sequential because each hidden state depends on the previous one.
+    \item \textbf{BPTT is expensive.} Long sequences make training slow.
+    \item \textbf{Vanishing gradients} make far-away context effectively disappear during learning.
+    \item \textbf{Exploding gradients} destabilize optimization; gradient clipping helps numerical stability but is not a complete solution.
+    \item \textbf{RNNs still struggle to use long-range context well in practice,} even though they are theoretically capable of representing it.
+    \item \textbf{Vanilla seq2seq compresses the full source sequence into one vector,} which is a severe information bottleneck.
+    \item \textbf{Attention context vectors can still ignore positional structure if built only as weighted sums.} This foreshadows the need for explicit positional mechanisms in later architectures.
+    \item \textbf{Attention visualizations are not guaranteed explanations.} High attention to a word does not necessarily imply causal responsibility for a prediction.
+\end{itemize}
+
+\subsection{Connections to Other Lectures}
+\begin{itemize}
+    \item This lecture directly continues Lecture 2. Word2vec produced type-level embeddings with no contextualization; RNNs turn sequence modeling into a way to learn \textbf{contextualized} token representations.
+    \item Lecture 2's log-linear and bag-of-words models ignored order or used only shallow local windows; RNNs add persistent hidden state and shared parameters across positions.
+    \item Seq2seq extends the one-to-one and many-to-one sequence models from this lecture into \textbf{variable-length} input/output prediction, especially for translation.
+    \item Attention is the bridge to the next lecture: once the decoder learns to compare states and reweight all source positions, the natural next step is to remove recurrence and build models around attention itself, i.e.\ Transformers.
+    \item The historical machine-translation discussion also connects back to Lecture 2's Bayes-style factorization \(p(y \mid x) \propto p(x \mid y)p(y)\); seq2seq replaces the old modular pipeline with one learned end-to-end model.
+\end{itemize}
+
+\subsection{Exam-Relevant Summary}
+\begin{itemize}
+    \item \textbf{Word token vs.\ word type:} RNN hidden states are contextualized token representations; word2vec embeddings are type-based.
+    \item \textbf{Feed-forward LM weakness:} fixed window, no memory, poor parameter efficiency as context grows.
+    \item \textbf{Feed-forward masked vs.\ autoregressive modeling:} masked prediction can learn contextual representations from both sides of a token, while autoregressive prediction models the next token from the left context and directly supports sequence probabilities.
+    \item \textbf{Basic RNN equations:}
+    \[
+    h_t = f(Wx_t + Vh_{t-1} + b_h), \qquad
+    \hat{y}_t = \operatorname{softmax}(Uh_t + b_y)
+    \]
+    \item \textbf{Initial state:}
+    \[
+    h_0 = \mathbf{0}
+    \]
+    \item \textbf{Training loss:}
+    \[
+    \mathcal{L} = \sum_{t=1}^{T} \operatorname{CE}(y_t,\hat{y}_t)
+    \]
+    \item \textbf{Teacher forcing:} use gold previous tokens during training.
+    \item \textbf{BPTT:} gradients propagate through the unrolled sequence; this is expensive and causes vanishing/exploding gradient problems.
+    \item \textbf{Truncated BPTT:} truncate the backward pass, not the recurrent forward memory.
+    \item \textbf{Gradient clipping:} controls exploding gradients by limiting gradient norm.
+    \item \textbf{RNN strengths:} shared weights across positions, stateful memory, variable-length sequential processing.
+    \item \textbf{RNN weaknesses:} slow training, poor parallelism, vanishing/exploding gradients, limited practical use of very long context.
+    \item \textbf{Seq2Seq:} encoder reads the source sequence, decoder generates the target sequence.
+    \item \textbf{Basic seq2seq bottleneck:} all source meaning must pass through the final encoder hidden state.
+    \item \textbf{Popular attention scoring functions:} additive/concat, bilinear/general, and dot product.
+    \item \textbf{Attention equations:}
+    \[
+    e_{t,i} = \operatorname{score}(h^{dec}_t, h^{enc}_i), \qquad
+    a_{t,i} = \frac{\exp(e_{t,i})}{\sum_j \exp(e_{t,j})}, \qquad
+    c_t = \sum_i a_{t,i} h^{enc}_i
+    \]
+    \item \textbf{Attention takeaway:} the decoder conditionally focuses on different encoder states at each output step, greatly improving seq2seq performance.
+    \item \textbf{Historical significance:} RNN encoder-decoder models with attention were the major step before attention-only Transformer models.
+\end{itemize}
+
+\end{document}

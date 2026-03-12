@@ -1,0 +1,227 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{enumitem}
+\usepackage{hyperref}
+
+\setlist[itemize]{topsep=4pt, itemsep=2pt, parsep=0pt}
+
+\title{6.8610 Spring 2026 Lecture 1 Notes: Introduction to NLP and Language Models}
+\author{}
+\date{February 3, 2026}
+
+\begin{document}
+\maketitle
+
+\section{Introduction to NLP and Language Models}
+
+\subsection{Motivation}
+\textbf{Definition: Natural Language Processing (NLP)}
+
+NLP studies how to make computers process, approximate understanding of, and leverage human language data. In this course, the emphasis is on \textbf{written text}, although many of the same modeling ideas extend to speech and signed languages.
+
+\begin{itemize}
+    \item Modern society produces enormous quantities of text, from web pages and news articles to search queries and social media posts.
+    \item If computers can model human language well, they can support search, translation, summarization, question answering, assistants, and many other tools that directly help people.
+    \item The lecture emphasizes that recent progress has made NLP visible to the general public, but current systems are still imperfect and should not be treated as infallible or human.
+    \item A central modern insight is that many NLP tasks can be reframed as \textbf{language modeling}: learning probability distributions over strings, or conditional distributions that generate one text from another.
+\end{itemize}
+
+\subsection{Key Concepts}
+\textbf{Definition: Language Model}
+
+A language model assigns probabilities to strings:
+\[
+p_\theta(x_{1:T})
+\]
+where \(x_{1:T} = (x_1, x_2, \dots, x_T)\) is a token sequence and \(\theta\) denotes model parameters.
+
+\begin{itemize}
+    \item \textbf{Human language is special and difficult to model.}
+    \begin{itemize}
+        \item It is discrete: language is built from compositional units such as tokens, morphemes, or words.
+        \item It is acquired remarkably naturally by humans.
+        \item It is almost infinitely expressive: the same meaning can be phrased many ways, and new meanings can be composed productively.
+        \item It is socially grounded, nuanced, and constantly evolving.
+    \end{itemize}
+    \item \textbf{Surface form and meaning are not the same.} The same underlying concept can be expressed across different encodings and languages.
+    \item \textbf{Language is ambiguous.} Meaning depends on context, world knowledge, discourse, syntax, and even stylistic choices such as punctuation or capitalization.
+    \item \textbf{Representation and modeling are the two cornerstones of NLP.}
+    \begin{itemize}
+        \item \textbf{Representation}: how symbolic language is converted into a form a computer can process.
+        \item \textbf{Modeling}: how those representations are used to solve a task or estimate a probability distribution.
+    \end{itemize}
+    \item \textbf{NLP historically consisted of many specialized tasks.} These include syntax-focused tasks (morphology, part-of-speech tagging, parsing), discourse tasks (summarization, coreference), and semantic tasks (sentiment, named entity recognition (NER), question answering (QA), machine translation, language modeling).
+    \item \textbf{Modern NLP increasingly unifies tasks under language modeling.} If a model can produce or condition on text well enough to follow instructions, many traditional NLP tasks become special cases of text generation or conditional prediction.
+\end{itemize}
+
+\subsection{Core Models and Equations}
+\textbf{Task framing.} Many NLP problems can be written as learning a function from an input \(X\) to an output \(Y\):
+\[
+Y \approx f_\theta(X)
+\]
+For example, in machine translation, \(X\) may be an English sentence and \(Y\) its Spanish translation.
+
+\textbf{Maximum-likelihood language modeling.} Given a training corpus \(x_{1:T}\), the goal is to learn parameters that maximize the probability of the observed data:
+\[
+\hat{\theta} = \arg\max_{\theta} p_\theta(x_{1:T})
+\]
+Often, the training corpus is viewed as one very long token sequence obtained by concatenating many documents.
+
+\textbf{Autoregressive factorization.} By the chain rule,
+\[
+p_\theta(x_{1:T}) = \prod_{t=1}^{T} p_\theta(x_t \mid x_{1:t-1})
+\]
+This left-to-right factorization is the dominant paradigm in modern large language models (LLMs).
+
+\textbf{Alternative factorizations.} The lecture notes that the joint distribution can also be factorized in other ways, for example:
+\[
+p_\theta(x_{1:T}) = \prod_{t=1}^{T} p_\theta(x_t \mid x_{t+1:T})
+\]
+for right-to-left generation, or via latent-variable models such as hidden Markov model (HMM)-style models or diffusion-based formulations.
+
+\textbf{Conditional language modeling.} Many downstream tasks can be reframed as learning:
+\[
+p_\theta(y_{1:m} \mid x_{1:n}) = \prod_{t=1}^{m} p_\theta(y_t \mid y_{1:t-1}, x_{1:n})
+\]
+This viewpoint underlies sequence-to-sequence learning for tasks such as translation and summarization.
+
+\textbf{Naive scalar parameterization.} If we explicitly stored the next-token distribution for every possible context, then with vocabulary size \(V\) and maximum length \(T\), the number of scalar probabilities grows as
+\[
+\sum_{t=1}^{T} V^t
+\]
+which is exponential in sequence length. This is why direct table lookup does not scale and function approximation is required.
+
+\textbf{Perplexity (PPL).} A standard intrinsic evaluation metric for language models is
+\[
+\operatorname{PPL}(x_{1:T}) = \exp\left(-\frac{1}{T}\log p_\theta(x_{1:T})\right)
+\]
+Using the autoregressive factorization,
+\[
+\operatorname{PPL}(x_{1:T}) = \exp\left(-\frac{1}{T}\sum_{t=1}^{T}\log p_\theta(x_t \mid x_{1:t-1})\right)
+\]
+Equivalent forms include
+\[
+\operatorname{PPL}(x_{1:T}) = p_\theta(x_{1:T})^{-1/T}
+\]
+Perplexity can be interpreted as the model's \textbf{average branching factor}; for a uniform distribution over a vocabulary of size \(V\), perplexity equals \(V\).
+
+\subsection{Algorithms / Architectures}
+\textbf{Historical modeling progression}
+\begin{itemize}
+    \item \textbf{1960s}: pattern matching and rule-based systems.
+    \item \textbf{1970s--1980s}: linguistically rich, logic-driven systems.
+    \item \textbf{1990s--2000s}: statistical machine learning becomes central.
+    \item \textbf{2010s--2020s}: deep neural networks dominate NLP.
+    \item \textbf{2020s onward}: large language models provide a single flexible interface for many tasks.
+\end{itemize}
+
+\textbf{Generic supervised NLP pipeline}
+\begin{itemize}
+    \item Start with input data \(X\) and desired outputs \(Y\).
+    \item Choose a model family \(f_\theta\): rule-based, conditional random field (CRF), HMM, graphical model, neural network, or another structured predictor.
+    \item Fit parameters to data so that the model maps \(X\) to useful outputs \(Y\).
+    \item Evaluate according to the application: accuracy, robustness, fairness, latency, or human usefulness.
+\end{itemize}
+
+\textbf{Autoregressive generation procedure}
+\begin{itemize}
+    \item Begin with a start-of-sequence context.
+    \item Predict a distribution over the next token.
+    \item Select or sample the next token.
+    \item Append it to the context.
+    \item Repeat until an end-of-sequence token is produced.
+\end{itemize}
+
+\textbf{Why function approximation matters}
+\begin{itemize}
+    \item A literal count table over all contexts is exponentially large.
+    \item Neural networks replace explicit memorization with shared parameters.
+    \item Shared parameters allow generalization across related contexts, tokens, and tasks.
+    \item In the deep-learning era, many systems learn features automatically instead of relying on manual feature engineering.
+\end{itemize}
+
+\subsection{Important Intuitions from the Professor}
+\begin{itemize}
+    \item \textbf{Do not anthropomorphize language models.} Fluency is not the same as sentience or grounded understanding.
+    \item \textbf{High-stakes decisions still require human oversight.} The lecture explicitly warns against treating model outputs as authoritative for serious matters such as medicine or major personal decisions.
+    \item \textbf{``Understanding'' may be the wrong operational target.} In practice, NLP systems often succeed by \emph{approximating understanding} well enough for a specific objective.
+    \item \textbf{Labeled data is scarce and valuable.} Unlabeled text is abundant, but high-quality task annotations are expensive and remain a bottleneck.
+    \item \textbf{Language evolves.} New words and usages such as ``COVID-19'' or ``Brexit'' force models to handle novelty and distribution shift.
+    \item \textbf{The right scientific habit is to inspect data and outputs carefully.} The professor emphasized that strong empirical work requires checking simple examples and failure cases rather than only reporting aggregate scores.
+    \item \textbf{Representation choices matter as much as model choices.} Tokenization and input formatting are not bookkeeping details; they shape what the model can learn.
+    \item \textbf{Modern NLP has consolidated around language modeling.} Earlier systems were task-specific; now a sufficiently strong language model that can follow instructions can support many text-processing tasks through a shared interface.
+\end{itemize}
+
+\subsection{Examples}
+\begin{itemize}
+    \item \textbf{Ambiguity examples from the slides}
+    \begin{itemize}
+        \item ``Red tape holds up new bridges.'' This can describe either literal support or bureaucratic delay.
+        \item ``Tesla crashed today.'' The subject could be a car, a stock, or a person named Tesla.
+        \item ``She made him duck.'' The sentence could mean forcing someone to lower their head or cooking duck for him.
+        \item ``Yes'' vs.\ ``Yes.'' vs.\ ``YES!'' show that punctuation and capitalization alter pragmatic meaning.
+    \end{itemize}
+    \item \textbf{Voice-assistant intent extraction}
+    \begin{itemize}
+        \item In ``Alexa, play Drivers License by Olivia Rodrigo,'' a system must infer the \textbf{intent} (play music) and extract slots such as song title and artist.
+        \item The professor gave an edge case: ``Play David Bowie by Phish,'' where both phrases can refer to artists, but the intended parse is song-by-artist.
+    \end{itemize}
+    \item \textbf{Machine translation}
+    \begin{itemize}
+        \item ``El perro marr\'on'' \(\rightarrow\) ``The brown dog'' illustrates that equivalent meanings can require different word orders across languages.
+    \end{itemize}
+    \item \textbf{Autoregressive probability}
+    \begin{itemize}
+        \item For ``I am a cat,'' the model computes the joint probability as a product of next-token probabilities conditioned on the prefix.
+    \end{itemize}
+    \item \textbf{Rule-based sentiment failure}
+    \begin{itemize}
+        \item A rule such as ``if the review contains \emph{incredible}, predict five stars'' fails on inputs like ``incredibly bad'' or more compositional negations and discourse twists.
+    \end{itemize}
+\end{itemize}
+
+\subsection{Common Pitfalls / Limitations}
+\begin{itemize}
+    \item \textbf{Rule brittleness}: handcrafted rules break under negation, irony, compositionality, and domain shift.
+    \item \textbf{Surface-form confusion}: identical strings can have different meanings, and different strings can express the same meaning.
+    \item \textbf{Data mismatch}: systems that work on one corpus may fail badly on another because vocabulary, style, or entity distributions change.
+    \item \textbf{Exponential context growth}: naive scalar next-token tables do not scale to realistic vocabularies and contexts.
+    \item \textbf{Overtrust}: fluent outputs can conceal factual errors, bias, or harmful advice.
+    \item \textbf{Metric myopia}: a ``good'' model depends on the use case; accuracy alone may ignore fairness, robustness, latency, or usability.
+\end{itemize}
+
+\subsection{Connections to Other Lectures}
+As the opening lecture, this class session establishes the conceptual frame for the rest of 6.8610 rather than building on earlier course lectures.
+
+\begin{itemize}
+    \item The distinction between \textbf{representation} and \textbf{modeling} foreshadows later lectures on tokenization, architectures, pretraining, post-training, and ranking.
+    \item The shift from many specialized models to unified \textbf{language modeling} motivates why later lectures focus on log-linear models, recurrent neural networks (RNNs), sequence-to-sequence models, attention, Transformers, and modern LLM training.
+    \item The introduction of \textbf{perplexity} prepares for later discussions of evaluation, scaling, and why intrinsic metrics do not fully capture downstream usefulness.
+    \item The lecture also connects directly to standard machine-learning prerequisites: maximum likelihood, supervised learning, generalization, and parameterized function approximation.
+\end{itemize}
+
+\subsection{Exam-Relevant Summary}
+\begin{itemize}
+    \item \textbf{NLP definition}: making computers process and leverage human language, with this course focusing on written text.
+    \item \textbf{Why NLP is hard}: ambiguity, compositionality, pragmatics, social context, and language change.
+    \item \textbf{Two cornerstones}: representation and modeling.
+    \item \textbf{Classical NLP task families}: syntax, discourse, and semantics.
+    \item \textbf{Modern unification}: many tasks can be reframed as unconditional or conditional language modeling.
+    \item \textbf{Language model}: a probability distribution over token sequences.
+    \item \textbf{Autoregressive factorization}:
+    \[
+    p_\theta(x_{1:T}) = \prod_{t=1}^{T} p_\theta(x_t \mid x_{1:t-1})
+    \]
+    \item \textbf{Training objective}: maximum likelihood on a large text corpus.
+    \item \textbf{Naive scalar parameterization is exponential} in context length, motivating learned function approximation.
+    \item \textbf{Perplexity} is the exponential of average negative log-likelihood and can be interpreted as average branching factor.
+    \item \textbf{Historical progression}: rules \(\rightarrow\) linguistic/statistical models \(\rightarrow\) deep learning \(\rightarrow\) LLMs.
+    \item \textbf{Professor emphasis}: do not confuse fluent text with true understanding; inspect data and model failures carefully.
+\end{itemize}
+
+\end{document}

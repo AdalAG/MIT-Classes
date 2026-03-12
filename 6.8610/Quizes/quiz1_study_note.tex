@@ -1,0 +1,700 @@
+\documentclass[10pt]{article}
+
+\usepackage[top=0.55in, bottom=0.65in, left=0.55in, right=0.55in]{geometry}
+\usepackage{amsmath, amssymb}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{enumitem}
+\usepackage{multicol}
+\usepackage{hyperref}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.35em}
+\setlength{\columnsep}{0.22in}
+\setlist[itemize]{leftmargin=*, topsep=2pt, itemsep=1pt, parsep=0pt}
+\setlist[enumerate]{leftmargin=*, topsep=2pt, itemsep=1pt, parsep=0pt}
+
+\newcommand{\PPL}{\operatorname{PPL}}
+\newcommand{\softmax}{\operatorname{softmax}}
+\newcommand{\CE}{\operatorname{CE}}
+\newenvironment{symdefs}{\begin{itemize}[leftmargin=1.1em, topsep=1pt, itemsep=0pt, parsep=0pt]}{\end{itemize}}
+\newcommand{\sym}[2]{\item \textbf{#1}: #2}
+
+\begin{document}
+\small
+
+\begin{center}
+{\Large \textbf{6.8610 Quiz 1 Study Note}}\\
+Spring 2026\\
+Aggregated from Lectures 1--7 in \texttt{6.8610/LectureNotes}
+\end{center}
+
+\begin{multicols*}{2}
+\raggedcolumns
+
+\section*{Course Throughline}
+\begin{itemize}
+\item \textbf{Natural Language Processing (NLP)} = representation \(+\) modeling for human language.
+\item Repeated theme: many NLP tasks can be reframed as language modeling.
+\item Repeated warning: low loss or high fluency does \emph{not} imply true understanding, reliability, or usefulness.
+\end{itemize}
+
+\section*{Lecture 1: Language Models}
+\textbf{Language model (LM):}
+\[
+p_\theta(x_{1:T}).
+\]
+\begin{symdefs}
+\sym{\(x_{1:T}\)}{token sequence \((x_1,\dots,x_T)\)}
+\sym{\(T\)}{sequence length}
+\sym{\(\theta\)}{model parameters}
+\end{symdefs}
+
+\textbf{Autoregressive factorization:}
+\[
+p_\theta(x_{1:T})=\prod_{t=1}^{T} p_\theta(x_t \mid x_{1:t-1}).
+\]
+
+\textbf{Conditional language modeling:}
+\[
+p_\theta(y_{1:m}\mid x_{1:n})
+=
+\prod_{t=1}^{m} p_\theta(y_t \mid y_{1:t-1}, x_{1:n}).
+\]
+\begin{symdefs}
+\sym{\(x_{1:n}\)}{input sequence}
+\sym{\(y_{1:m}\)}{output sequence}
+\sym{\(n\)}{input length}
+\sym{\(m\)}{output length}
+\end{symdefs}
+
+\textbf{Maximum likelihood:}
+\[
+\hat{\theta}=\arg\max_\theta p_\theta(x_{1:T}).
+\]
+
+\textbf{Naive table size:}
+\[
+\sum_{t=1}^{T} V^t
+\]
+for vocabulary size \(V\); this is exponential in context length.
+
+\textbf{Perplexity:}
+\[
+\PPL(x_{1:T})
+=
+\exp\left(
+-\frac{1}{T}\log p_\theta(x_{1:T})
+\right)
+=
+p_\theta(x_{1:T})^{-1/T}.
+\]
+\begin{symdefs}
+\sym{\(\PPL\)}{per-token perplexity}
+\sym{Lower \(\PPL\)}{better fit to the evaluation distribution}
+\end{symdefs}
+
+\begin{itemize}
+\item Interpret perplexity as the model's average branching factor.
+\item For a uniform distribution over \(V\) words, \(\PPL=V\).
+\item \textbf{Perplexity sanity checks:} \(\PPL>0\) always, and a unigram maximum-likelihood model should outperform a uniform model on its own corpus.
+\item \textbf{Shorter strings are not automatically better.} Autoregressive sentence probability also depends on whether the model decides to stop, so an end-of-sequence choice can make a longer complete sentence more probable than a shorter prefix.
+\item \textbf{Conditional perplexity reaches \(1\) only for deterministic mappings.} If one input can map to multiple valid outputs, the conditional perplexity must stay above \(1\).
+\item Language is hard because it is ambiguous, compositional, socially grounded, and constantly changing.
+\item Representation and modeling are the two recurring pillars of the course.
+\end{itemize}
+
+\section*{Lecture 2: Log-Linear Models and Embeddings}
+\textbf{Historical translation framing:}
+\[
+p(y \mid x) \propto p(x \mid y)\,p(y).
+\]
+\begin{symdefs}
+\sym{\(x\)}{source sentence}
+\sym{\(y\)}{target sentence}
+\sym{\(p(y)\)}{target-language model}
+\end{symdefs}
+
+\textbf{Log-linear next-token model:}
+\[
+p_\theta(y \mid x)
+=
+\frac{\exp(\theta_y^\top \phi(x))}
+{\sum_{y' \in V}\exp(\theta_{y'}^\top \phi(x))}.
+\]
+\begin{symdefs}
+\sym{\(x\)}{context}
+\sym{\(y\)}{next token}
+\sym{\(\phi(x)\)}{fixed feature vector for context \(x\)}
+\sym{\(\theta_y\)}{parameter vector for token \(y\)}
+\sym{\(V\)}{vocabulary}
+\end{symdefs}
+
+\textbf{Single-example log-likelihood:}
+\[
+\log p_\theta(y \mid x)
+=
+\theta_y^\top \phi(x)-\log Z(x),
+\qquad
+Z(x)=\sum_{y' \in V}\exp(\theta_{y'}^\top \phi(x)).
+\]
+\begin{symdefs}
+\sym{\(Z(x)\)}{partition function that normalizes scores into probabilities}
+\end{symdefs}
+
+\textbf{Gradient:}
+\[
+\nabla_{\theta_{y_0}}\log p_\theta(y \mid x)
+=
+\left(\mathbf{1}[y=y_0]-p_\theta(y_0 \mid x)\right)\phi(x).
+\]
+\begin{symdefs}
+\sym{\(y_0\)}{candidate token}
+\sym{\(\mathbf{1}[y=y_0]\)}{indicator that \(y_0\) is the gold token}
+\end{symdefs}
+
+\textbf{Term frequency-inverse document frequency (TF-IDF):}
+\[
+\operatorname{TF}(w,d)=\text{count of } w \text{ in } d,
+\]
+\[
+\operatorname{IDF}(w)=\log \frac{N}{\operatorname{df}(w)},
+\qquad
+\operatorname{TFIDF}(w,d)=\operatorname{TF}(w,d)\operatorname{IDF}(w).
+\]
+\begin{symdefs}
+\sym{\(d\)}{document}
+\sym{\(w\)}{word type}
+\sym{\(N\)}{number of documents}
+\sym{\(\operatorname{df}(w)\)}{number of documents containing \(w\)}
+\end{symdefs}
+
+\textbf{Skip-gram:}
+\[
+p(y \mid x)
+=
+\frac{\exp(u_y^\top w_x)}
+{\sum_{y' \in V}\exp(u_{y'}^\top w_x)}.
+\]
+\begin{symdefs}
+\sym{\(w_x\)}{input embedding of center word \(x\)}
+\sym{\(u_y\)}{output embedding of context word \(y\)}
+\end{symdefs}
+Predict context from center word.
+
+\textbf{Continuous Bag-of-Words (CBOW):}
+\[
+W(x)=\frac{1}{|x|}\sum_{x_i \in x} w_{x_i},
+\qquad
+p(y \mid x)\propto \exp(u_y^\top W(x)).
+\]
+\begin{symdefs}
+\sym{\(x\)}{context-word set or context window}
+\sym{\(|x|\)}{number of context words}
+\sym{\(W(x)\)}{averaged context embedding}
+\end{symdefs}
+Predict target word from neighboring words.
+
+\textbf{Pointwise mutual information (PMI) view:}
+\[
+u_y^\top w_x \approx \log \frac{p(x,y)}{p(x)p(y)} - c.
+\]
+\begin{symdefs}
+\sym{\(c\)}{approximately constant offset}
+\end{symdefs}
+
+\begin{itemize}
+\item Bag-of-words and CBOW are order-insensitive.
+\item Reversing the corpus should leave standard CBOW nearly unchanged because the local context multisets are preserved.
+\item Skip-gram and CBOW learn useful \textbf{type-level} embeddings, not contextualized token representations.
+\item Embedding quality can be checked intrinsically (similarity/analogy resources) or extrinsically (downstream-task performance).
+\item CBOW and Skip-gram are \textbf{not} proper left-to-right language models.
+\item Neural embedding methods are not guaranteed to beat count-based models on perplexity, because some of them are not autoregressive sequence models at all.
+\item Embedding dimensions are usually not individually interpretable.
+\item High input-output dot products such as \(u_y^\top w_x\) reflect predictive compatibility or co-occurrence association.
+\item Similar contexts are more naturally reflected by similarity between embeddings of two words, not by a single cross dot product.
+\item For two candidates \(a\) and \(b\) under the same softmax context,
+\[
+\frac{p(a \mid x)}{p(b \mid x)}=\exp(\operatorname{score}(a,x)-\operatorname{score}(b,x)).
+\]
+\item In word2vec-style models, the embedding layer is essentially a learned lookup table; richer contextual composition arrives in later sequence models.
+\end{itemize}
+
+\section*{Lecture 3: Feed-Forward Models, RNNs, Seq2Seq, Attention}
+\textbf{Key contrast: masked vs autoregressive feed-forward models}
+\begin{itemize}
+\item \textbf{Masked objective:} predict a hidden token from surrounding context.
+\item \textbf{Autoregressive objective:} predict the next token from left context only.
+\item Masked objectives can learn representations; autoregressive objectives directly define normalized sequence probabilities.
+\end{itemize}
+
+\textbf{Basic recurrent neural network (RNN) update:}
+\[
+h_t = f(Wx_t + Vh_{t-1} + b_h),
+\qquad
+\hat{y}_t = \softmax(Uh_t + b_y).
+\]
+\begin{symdefs}
+\sym{\(x_t\)}{input at timestep \(t\)}
+\sym{\(h_t\)}{hidden state at timestep \(t\)}
+\sym{\(\hat{y}_t\)}{predicted output distribution at timestep \(t\)}
+\sym{\(\softmax(z)_j\)}{normalized exponential,
+\[
+\softmax(z)_j=\frac{e^{z_j}}{\sum_k e^{z_k}},
+\]
+where \(z\) is a vector of logits and \(j\) indexes one output coordinate}
+\sym{\(W,V,U\)}{learned parameter matrices}
+\sym{\(b_h,b_y\)}{bias terms}
+\end{symdefs}
+
+\textbf{Cross-entropy (CE) sequence loss:}
+\[
+\mathcal{L}=\sum_{t=1}^{T}\CE(y_t,\hat{y}_t),
+\qquad
+\CE(y_t,\hat{y}_t)= -\sum_{j \in V} y_{t,j}\log \hat{y}_{t,j}.
+\]
+\begin{symdefs}
+\sym{\(y_t\)}{one-hot gold label at timestep \(t\)}
+\sym{\(\hat{y}_{t,j}\)}{predicted probability of vocabulary item \(j\) at timestep \(t\)}
+\sym{\(V\)}{vocabulary}
+\end{symdefs}
+
+\textbf{Backpropagation Through Time (BPTT), final-loss contribution:}
+\[
+\frac{\partial \mathcal{L}_T}{\partial h_k}
+=
+\frac{\partial \mathcal{L}_T}{\partial h_T}
+\prod_{t=k+1}^{T}
+\frac{\partial h_t}{\partial h_{t-1}}.
+\]
+\begin{symdefs}
+\sym{\(\mathcal{L}_T\)}{loss contribution from the final timestep \(T\)}
+\sym{Interpretation}{for full sequence loss, gradients to \(h_k\) sum contributions from later timesteps; repeated Jacobian products can make gradients vanish or explode}
+\end{symdefs}
+
+\textbf{Exploding-gradient fix: gradient clipping}
+\[
+g \leftarrow g \cdot \min\left(1,\frac{\tau}{\lVert g \rVert}\right).
+\]
+\begin{symdefs}
+\sym{\(g\)}{gradient vector}
+\sym{\(\lVert g \rVert\)}{gradient norm}
+\sym{\(\tau\)}{clipping threshold}
+\end{symdefs}
+
+\textbf{Seq2Seq encoder-decoder:}
+\[
+h^{dec}_0 = h^{enc}_N,
+\qquad
+h^{dec}_t = f(W_y y_{t-1} + V h^{dec}_{t-1} + b).
+\]
+\begin{symdefs}
+\sym{\(h_N^{enc}\)}{final encoder state}
+\sym{\(h_t^{dec}\)}{decoder state at timestep \(t\)}
+\sym{\(y_{t-1}\)}{previous target-token embedding or representation}
+\end{symdefs}
+
+\textbf{Attention score and weights:}
+\[
+e_{t,i}=\operatorname{score}(h_t^{dec}, h_i^{enc}),
+\qquad
+a_{t,i}=\frac{\exp(e_{t,i})}{\sum_{j=1}^{N}\exp(e_{t,j})}.
+\]
+\begin{symdefs}
+\sym{\(t\)}{decoder timestep}
+\sym{\(i\)}{source position}
+\sym{\(e_{t,i}\)}{compatibility score between decoder step \(t\) and source position \(i\)}
+\sym{\(a_{t,i}\)}{normalized attention weight}
+\end{symdefs}
+
+\textbf{Context vector:}
+\[
+c_t=\sum_{i=1}^{N} a_{t,i} h_i^{enc}.
+\]
+\begin{symdefs}
+\sym{\(c_t\)}{context vector, i.e. weighted average of encoder states}
+\end{symdefs}
+
+\textbf{RNN can emulate a 2-token feed-forward LM:}
+\[
+h_t=[Wx_{t-1};\,Wx_{t-2}],
+\]
+so the hidden state stores the last two token embeddings and reproduces a fixed 2-token context window.
+\begin{symdefs}
+\sym{\(W\)}{embedding matrix for input tokens}
+\sym{\(x_{t-1}, x_{t-2}\)}{one-hot vectors for the previous two input tokens}
+\sym{\(h_t\)}{RNN hidden state storing the embeddings of the two most recent tokens}
+\sym{\([a;b]\)}{concatenation of vector \(a\) above vector \(b\)}
+\end{symdefs}
+
+\textbf{Popular attention scoring functions:}
+\begin{itemize}
+\item Additive / concat:
+\[
+e_{t,i}=v_a^\top \tanh\!\left(W_a[h_t^{dec}; h_i^{enc}]\right).
+\]
+\item Bilinear / general:
+\[
+e_{t,i}=(h_t^{dec})^\top W_a h_i^{enc}.
+\]
+\item Dot product:
+\[
+e_{t,i}=(h_t^{dec})^\top h_i^{enc}.
+\]
+\end{itemize}
+
+\begin{itemize}
+\item RNN hidden states are \textbf{contextualized token embeddings}; word2vec embeddings are static type vectors.
+\item Teacher forcing: during training, feed the gold previous token to the decoder.
+\item Truncated BPTT truncates the \textbf{backward} pass, not the forward recurrent state.
+\item RNN strengths: shared weights, variable-length processing, stateful memory.
+\item RNN weaknesses: slow, hard to parallelize, vanishing/exploding gradients, weak practical long-range memory.
+\item Long short-term memory (LSTM) networks are a gated repair to vanilla RNNs.
+\item Attention breaks the single-vector encoder bottleneck and is the bridge to Transformers.
+\end{itemize}
+
+\section*{Lecture 4: Transformers}
+\textbf{Queries / keys / values:}
+\[
+q_i=W_Q x_i,
+\qquad
+k_i=W_K x_i,
+\qquad
+v_i=W_V x_i.
+\]
+\begin{symdefs}
+\sym{\(x_i\)}{representation of token \(i\)}
+\sym{\(q_i\)}{query vector of token \(i\)}
+\sym{\(k_i\)}{key vector of token \(i\)}
+\sym{\(v_i\)}{value vector of token \(i\)}
+\end{symdefs}
+
+\textbf{Scaled dot-product attention:}
+\[
+a_{ij}
+=
+\softmax_j\!\left(\frac{q_i^\top k_j}{\sqrt{d_k}}\right),
+\qquad
+z_i=\sum_{j=1}^{n} a_{ij} v_j.
+\]
+\begin{symdefs}
+\sym{\(a_{ij}\)}{attention weight from token \(i\) to token \(j\)}
+\sym{\(d_k\)}{key dimension}
+\sym{\(n\)}{sequence length}
+\sym{\(z_i\)}{new representation for token \(i\)}
+\end{symdefs}
+
+\textbf{Matrix form:}
+\[
+\operatorname{Attention}(Q,K,V)
+=
+\softmax\!\left(\frac{QK^\top}{\sqrt{d_k}}\right)V.
+\]
+\begin{symdefs}
+\sym{\(Q\)}{matrix of token queries}
+\sym{\(K\)}{matrix of token keys}
+\sym{\(V\)}{matrix of token values}
+\end{symdefs}
+
+\textbf{Multi-Head Attention (MHA):}
+\[
+\text{head}_h
+=
+\operatorname{Attention}(QW_Q^{(h)}, KW_K^{(h)}, VW_V^{(h)}),
+\]
+\[
+\operatorname{MHA}(Q,K,V)
+=
+\operatorname{Concat}(\text{head}_1,\dots,\text{head}_H)W_O.
+\]
+\begin{symdefs}
+\sym{\(H\)}{number of attention heads}
+\sym{\(W_O\)}{output projection matrix}
+\end{symdefs}
+
+\textbf{Position-wise feed-forward neural network (FFNN):}
+\[
+\operatorname{FFNN}(z_i)=W_2\,\sigma(W_1 z_i + b_1)+b_2.
+\]
+\begin{symdefs}
+\sym{\(\sigma\)}{position-wise nonlinearity}
+\end{symdefs}
+
+\textbf{Residual connection:}
+\[
+f_{\text{res}}(x)=f(x)+x.
+\]
+
+\textbf{Layer normalization:}
+\[
+\hat{z}_{t,j}=\frac{z_{t,j}-\mu_t}{\sigma_t+\epsilon},
+\qquad
+y_{t,j}=\gamma_j \hat{z}_{t,j}+\beta_j.
+\]
+\begin{symdefs}
+\sym{\(\mu_t\)}{mean over features of token \(t\)}
+\sym{\(\sigma_t\)}{standard deviation over features of token \(t\)}
+\sym{\(\epsilon\)}{small stability constant}
+\sym{\(\gamma,\beta\)}{learned scale and shift parameters}
+\end{symdefs}
+
+\textbf{Positional encodings:}
+\[
+x_i' = x_i + p_i.
+\]
+\begin{symdefs}
+\sym{\(p_i\)}{position encoding for token \(i\)}
+\end{symdefs}
+Sinusoidal:
+\[
+\operatorname{PE}_{(\text{pos},2i)}
+=
+\sin\!\left(\frac{\text{pos}}{10000^{2i/d_{\text{model}}}}\right),
+\]
+\[
+\operatorname{PE}_{(\text{pos},2i+1)}
+=
+\cos\!\left(\frac{\text{pos}}{10000^{2i/d_{\text{model}}}}\right).
+\]
+
+\textbf{Masked self-attention:}
+\[
+\operatorname{MaskedAttention}(Q,K,V)
+=
+\softmax\!\left(\frac{QK^\top + M}{\sqrt{d_k}}\right)V,
+\]
+with \(M_{ij}=0\) if \(j \le i\), else \(-\infty\).
+\begin{symdefs}
+\sym{\(M\)}{causal mask preventing token \(i\) from attending to future positions \(j>i\)}
+\end{symdefs}
+
+\textbf{Cross-attention:}
+\[
+\operatorname{CrossAttention}
+=
+\softmax\!\left(
+\frac{Q^{dec}(K^{enc})^\top}{\sqrt{d_k}}
+\right)V^{enc}.
+\]
+\begin{symdefs}
+\sym{\(Q^{dec}\)}{queries from decoder states}
+\sym{\(K^{enc}\)}{keys from encoder states}
+\sym{\(V^{enc}\)}{values from encoder states}
+\end{symdefs}
+
+\textbf{BERT objectives:}
+\[
+\max_\theta \sum_{t \in \mathcal{M}} \log p_\theta(x_t \mid x_{\setminus \mathcal{M}}),
+\qquad
+p_\theta(\texttt{isNext} \mid s_1, s_2).
+\]
+\begin{symdefs}
+\sym{\(\mathcal{M}\)}{set of masked token positions}
+\sym{\(s_1,s_2\)}{sentence pair used in next-sentence prediction}
+\end{symdefs}
+
+\begin{itemize}
+\item Three ways to attend:
+\begin{itemize}
+\item self-attention: one sequence attends to itself;
+\item masked self-attention: same, but future positions blocked;
+\item cross-attention: decoder attends to encoder states.
+\end{itemize}
+\item Self-attention lets each token access all other positions directly and parallelizes across positions better than recurrent models.
+\item Without positional information, a Transformer encoder behaves like a bag-of-words system up to permutation symmetry.
+\item Positional information is necessary because content-only attention does not otherwise encode order.
+\item Transformer encoder = self-attention \(+\) residual/norm \(+\) FFNN.
+\item Transformer decoder = masked self-attention; encoder-decoder models also add cross-attention for conditional generation.
+\item Causal masking matters because it preserves the left-to-right training objective and prevents information leakage from future tokens.
+\item \textbf{BERT} = encoder-only, pretrained with masked language modeling and originally next sentence prediction.
+\item BERT masking rule: choose \(15\%\) of tokens; of those, \(80\%\) \texttt{[MASK]}, \(10\%\) random, \(10\%\) unchanged.
+\item \textbf{GPT} = decoder-only autoregressive model using masked self-attention.
+\item Encoder-only models suit representation tasks; decoder-only models suit generation; encoder-decoder models suit conditional generation such as translation.
+\item \(W_Q\), \(W_K\), and \(W_V\) are shared parameters across all tokens and examples.
+\item Raw attention scores come from queries against keys, not keys against values.
+\item Cross-attention is specifically the decoder weighting encoder-side representations.
+\item Removing the causal mask changes the training objective; it is not harmless just because inference is left-to-right.
+\item Constraining \(W_Q=W_K\) may reduce expressivity, but it does not change the \(O(n^2)\) attention cost.
+\item Learned absolute positional embeddings do not naturally extrapolate to longer sequence lengths than those seen in training.
+\item Types of learning: supervised, unsupervised / self-supervised, semi-supervised, multi-task, transfer learning.
+\item Standard attention is \(O(n^2)\) in sequence length.
+\end{itemize}
+
+\section*{Lecture 5: Evaluation}
+\begin{itemize}
+\item \textbf{Intrinsic evaluation}: fit to the training-style objective, e.g. held-out log-likelihood or perplexity.
+\item \textbf{Extrinsic evaluation}: performance on an actual downstream task.
+\item Core warning: perplexity is useful but not sufficient.
+\end{itemize}
+
+\textbf{Held-out perplexity:}
+\[
+\PPL
+=
+\exp\left\{-\frac{1}{n}\sum_{(x,y)} \log p_\theta(y \mid x)\right\}.
+\]
+\begin{symdefs}
+\sym{\(n\)}{number of evaluation examples or tokens, depending on setup}
+\end{symdefs}
+
+\textbf{LM3 counterexample:}
+\[
+\begin{aligned}
+p_3(x)&=\frac{1}{2}p_1(x) \\
+\Longrightarrow \quad
+\frac{1}{n}\sum_x \log p_3(x)
+&=
+\frac{1}{n}\sum_x \log p_1(x)+\log\frac{1}{2}.
+\end{aligned}
+\]
+A constant log-likelihood penalty can hide catastrophic generation failures.
+
+\textbf{Forced-choice accuracy:}
+\[
+\operatorname{Accuracy}
+=
+\frac{\#(\text{correct})}{\#(\text{examples})}.
+\]
+
+\begin{itemize}
+\item Demo \(\neq\) solved problem.
+\item Recognition and generation are different skills.
+\item Forced-choice evaluations are clean and easy to score, but they test a narrow recognition setup rather than open-ended generation.
+\item Free-response evaluation better matches real use, but it is harder to score and easier to make noisy.
+\item Human evaluation is expensive, noisy, and hard to reproduce, but still the gold standard in many settings.
+\item Elicitation matters: prompt wording, sampling choices, and rubric design can change the measured result.
+\item \textbf{BLEU}: precision-oriented \(n\)-gram overlap with a brevity penalty.
+\item \textbf{ROUGE}: recall-oriented overlap, common in summarization.
+\item \textbf{BERTScore}: embedding-based semantic similarity rather than exact overlap.
+\item LM-as-a-judge can work because verification is often easier than generation.
+\item Common failure modes: Goodhart's Law, Clever Hans effects, leakage, spurious shortcuts, metric overfitting.
+\end{itemize}
+
+\section*{Lecture 6: Pretraining and Fine-Tuning}
+\textbf{Transfer-learning pipeline:}
+\[
+\theta_{\mathrm{PT}}
+=
+\arg\max_\theta \sum_{(x,y)\in D_{\mathrm{PT}}}\log p_\theta(y \mid x),
+\]
+\[
+\theta_{\mathrm{FT}}
+=
+\arg\max_\theta \sum_{(x,y)\in D_{\mathrm{FT}}}\log p_\theta(y \mid x)
+\quad \text{initialized at } \theta_{\mathrm{PT}}.
+\]
+\begin{symdefs}
+\sym{\(D_{\mathrm{PT}}\)}{pretraining corpus}
+\sym{\(D_{\mathrm{FT}}\)}{downstream fine-tuning dataset}
+\end{symdefs}
+
+\textbf{Gradient-view intuition:}
+\[
+\theta' \leftarrow \theta + \nabla_\theta \log p(y_{\mathrm{PT}} \mid x_{\mathrm{PT}}),
+\]
+\[
+\theta'' \leftarrow \theta' + \nabla_{\theta'} \log p(y_{\mathrm{FT}} \mid x_{\mathrm{FT}}).
+\]
+
+\textbf{Pretraining objectives:}
+\begin{itemize}
+\item autoregressive next-token prediction:
+\[
+p_\theta(x_{1:T})
+=
+\prod_{t=1}^{T} p_\theta(x_t \mid x_{1:t-1});
+\]
+\item masked language modeling:
+\[
+\max_\theta \sum_{t \in \mathcal{M}} \log p_\theta(x_t \mid x_{\setminus \mathcal{M}});
+\]
+\item infilling:
+\[
+\max_\theta \log p_\theta(x_{\mathrm{missing}} \mid x_{\mathrm{prefix}}, x_{\mathrm{suffix}});
+\]
+\item ranking / discrimination:
+\[
+p_\theta(y=1 \mid s_1, s_2).
+\]
+\end{itemize}
+
+\begin{itemize}
+\item Pretraining learns general language/world knowledge; fine-tuning steers behavior to tasks or domains.
+\item Instruction tuning makes a base model respond usefully to prompts.
+\item Continued pretraining on in-domain unlabeled text is often helpful.
+\item Data mixing or reweighting tries to make pretraining data look more like the downstream domain.
+\item Synthetic question-answer (QA) or instruction data can help when labels are scarce.
+\item Parameter-Efficient Fine-Tuning (PEFT) updates only a small subset of parameters.
+\item Fine-tuning is often \textbf{shallow}: it surfaces or reweights capabilities already present from pretraining.
+\item Refusal is not the same as forgetting; unlearning is fragile.
+\item Overaggressive fact fine-tuning can increase hallucination.
+\end{itemize}
+
+\section*{Lecture 7: Scaling Laws and Emergent Behavior}
+\textbf{Validation loss and perplexity:}
+\[
+\PPL=e^{L}.
+\]
+
+\textbf{Generic scaling law:}
+\[
+L(X)\propto X^{-\alpha},
+\qquad 0<\alpha<1.
+\]
+
+\textbf{Chinchilla-style model:}
+\[
+L(N,D)=E+\frac{A}{N^\alpha}+\frac{B}{D^\beta}.
+\]
+\begin{symdefs}
+\sym{\(N\)}{parameter count}
+\sym{\(D\)}{training-token count}
+\sym{\(E\)}{irreducible loss floor}
+\sym{\(A,B,\alpha,\beta\)}{fitted scaling-law constants}
+\end{symdefs}
+
+\textbf{Dense-Transformer compute approximation:}
+\[
+C \approx 6ND.
+\]
+\begin{symdefs}
+\sym{\(C\)}{rough dense-Transformer training-compute budget}
+\end{symdefs}
+
+\textbf{Under fixed compute:}
+\[
+D=\frac{C}{6N}
+\]
+and choose \(N,D\) to minimize the predicted loss.
+
+\textbf{Log-log linearization:}
+\[
+L(X)=kX^{-\alpha}
+\quad \Longrightarrow \quad
+\log L(X)=\log k - \alpha \log X.
+\]
+
+\begin{itemize}
+\item Workflow: train many smaller models, measure loss, fit power laws, extrapolate.
+\item On log-log plots, approximate power laws look roughly linear.
+\item Under fixed compute, training cost is roughly proportional to parameter count times training-token count, so model size and data size trade off against each other.
+\item Kaplan view: bigger models looked especially powerful.
+\item Chinchilla refinement: many large models were undertrained, so compute-optimal scaling uses a better parameter/data balance.
+\item In-context learning: adapt from instructions/examples in the prompt, without gradient updates.
+\item Chain-of-thought reasoning: generate intermediate reasoning steps token by token.
+\item Emergence may be real, but some ``jumps'' are metric artifacts.
+\item Loss and perplexity remain useful but imperfect proxies for downstream reasoning and task performance.
+\end{itemize}
+
+\section*{Likely Quiz Habits}
+\begin{itemize}
+\item Be able to write the core equations from memory.
+\item Be ready to explain \emph{why} a model/objective does or does not define a valid language model.
+\item Expect compare/contrast questions: CBOW vs RNN, RNN vs Transformer, BERT vs GPT, intrinsic vs extrinsic evaluation, Kaplan vs Chinchilla.
+\item When asked about limitations, mention order sensitivity, context length, optimization, parallelism, metric mismatch, and data/compute tradeoffs.
+\end{itemize}
+
+\end{multicols*}
+
+\end{document}
