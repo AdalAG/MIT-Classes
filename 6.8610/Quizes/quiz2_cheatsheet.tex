@@ -39,10 +39,11 @@
 \newcommand{\InfoNCE}{\operatorname{InfoNCE}}
 \newcommand{\head}[1]{\section*{#1}}
 \newcommand{\mini}[1]{\textbf{#1}}
+\newcommand{\defs}[1]{{\emph{#1}}\par}
 
 \begin{document}
 \raggedright
-\scriptsize
+\footnotesize
 
 \begin{center}
 \textbf{6.8610 Quiz 2 Cheatsheet}
@@ -50,8 +51,7 @@
 
 \mini{Question cues:} bottleneck first; watch absolute words (\emph{always}, \emph{only}, \emph{guarantees}, \emph{equivalent}); reject answers by missing property; say quality \emph{and} systems constraint; simplify toy objectives before interpreting them.
 
-\begin{multicols*}{4}
-\raggedcolumns
+\begin{multicols}{3}
 
 \head{Post-Training Flow}
 \[
@@ -74,6 +74,7 @@
 \end{itemize}
 
 \mini{SFT objective}
+\defs{\(\theta=\) params,\; \(\mathcal D=\{(x,y)\}\) demo pairs,\; \(x=\) prompt,\; \(y=\) assistant response.}
 \[
 \max_\theta \sum_{(x,y)\in\mathcal D}\log p_\theta(y\mid x)
 \]
@@ -91,12 +92,12 @@
 \item ``I don't know'' is hard from demos alone.
 \end{itemize}
 
-\columnbreak
-
 \head{Preference Learning}
-\mini{Setup} \(x=\) prompt,\; \(y_w=\) winner,\; \(y_\ell=\) loser,\; \(p_0=\) reference.
+\mini{Setup}
+\defs{\(x=\) prompt,\; \(y_w/y_\ell=\) winner/loser,\; \(p_\theta=\) policy,\; \(p_0=\) reference,\; \(\sigma=\) logistic.}
 
 \mini{Bradley--Terry}
+\defs{\(r_\theta(x,y)=\) learned scalar preference score.}
 \[
 P(y_w\succ y_\ell\mid x)=\sigma(r(x,y_w)-r(x,y_\ell))
 \]
@@ -124,6 +125,7 @@ P(y_w\succ y_\ell\mid x)=\sigma(r(x,y_w)-r(x,y_\ell))
 \end{itemize}
 
 \mini{Reward parameterization behind DPO}
+\defs{\(\lambda=\) preference scale,\; \(Z(x)=\) prompt-wise partition function.}
 \[
 r_\theta(x,y)
 =
@@ -132,6 +134,7 @@ r_\theta(x,y)
 \]
 
 \mini{If SLiC fits in memory}
+\defs{Here \(\Delta>0\) is a margin, not the DPO \(\Delta_\theta\) above.}
 \[
 \max(0,\Delta+\log p_\theta(y_\ell\mid x)-\log p_\theta(y_w\mid x))
 \]
@@ -143,10 +146,9 @@ r_\theta(x,y)
 \item RL = optimize reward on fresh model samples.
 \end{itemize}
 
-\columnbreak
-
 \head{RLHF Basics}
 \mini{Reward-regularized objective}
+\defs{\(x=\) prompt,\; \(y=\) completion,\; \(p_0=\) reference policy,\; \(\lambda=\) KL weight.}
 \[
 J(\theta)
 =
@@ -155,6 +157,7 @@ J(\theta)
 \]
 
 \mini{Reward model}
+\defs{\(\phi=\) reward-model params,\; \(h_\phi(x,y)=\) features,\; \(w=\) linear head.}
 \[
 r_\phi(x,y)=w^\top h_\phi(x,y)
 \]
@@ -163,6 +166,7 @@ r_\phi(x,y)=w^\top h_\phi(x,y)
 \]
 
 \mini{Vanilla policy gradient}
+\defs{\(r(x,y)=\) scalar reward.}
 \[
 \nabla_\theta \E_{y\sim p_\theta}[r]
 =
@@ -183,19 +187,19 @@ A(x,y)=r(x,y)-V(x)
 \end{itemize}
 
 \mini{KL-folding approx.}
+\defs{\(r'(x,y)=\) reward after folding the reference-model KL term into the scalar reward.}
 \[
 r'(x,y)=r(x,y)-\log p_\theta(y\mid x)+\log p_0(y\mid x)
 \]
 
 \mini{Tiny cue}
 \begin{itemize}
-\item Equal SFT probs, rewards \(1/0\), \(\beta=1\) \(\Rightarrow\) better response gets prob \(e/(e+1)\).
+\item Equal SFT probs, rewards \(1/0\), \(\beta=\) KL weight \(=1\) \(\Rightarrow\) better response gets prob \(e/(e+1)\).
 \end{itemize}
-
-\columnbreak
 
 \head{PPO / GRPO}
 \mini{Importance ratio}
+\defs{\(p_{\theta_{\mathrm{old}}}=\) old policy,\; \(A=\) advantage,\; \(\epsilon=\) clip radius.}
 \[
 \rho(x,y)=\frac{p_\theta(y\mid x)}{p_{\theta_{\mathrm{old}}}(y\mid x)},
 \qquad
@@ -218,6 +222,7 @@ r'(x,y)=r(x,y)-\log p_\theta(y\mid x)+\log p_0(y\mid x)
 \end{itemize}
 
 \mini{GRPO}
+\defs{\(r_i=\) rewards for samples \(i\) from one prompt,\; \(\mu,\sigma=\) group mean/std.}
 \[
 \mu=\operatorname{mean}(r_i),
 \qquad
@@ -246,7 +251,7 @@ A_i=\frac{r_i-\mu}{\sigma}
 \item whether fresh model samples are needed
 \end{itemize}
 
-\end{multicols*}
+\end{multicols}
 
 \newpage
 
@@ -265,11 +270,11 @@ Late int. & token-level & doc toks offline & small q TF + ANN & middle ground \\
 ANN / IVF & prune candidates & index offline & sublinear-ish shortlist & scale \\
 \end{tabular*}
 
-\begin{multicols*}{4}
-\raggedcolumns
+\begin{multicols}{3}
 
 \head{Neural Retrieval}
 \mini{Dual-encoder score}
+\defs{\(q=\) query,\; \(d=\) doc,\; \(d^+=\) positive doc,\; \(d_i^-=\) negative docs.}
 \[
 s(q,d)=f(q)^\top g(d)
 \]
@@ -280,6 +285,7 @@ s_i^-=s(q,d_i^-)
 \]
 
 \mini{InfoNCE}
+\defs{\(\tau=\) temperature,\; \(s^+=\) positive score,\; \(s_i^-=\) negative scores.}
 \[
 \mathcal L_{\InfoNCE}
 =
@@ -294,6 +300,7 @@ s_i^-=s(q,d_i^-)
 \]
 
 \mini{Late interaction / ColBERT}
+\defs{\(E_{q_i},E_{d_j}=\) query/doc token embeddings.}
 \[
 S(q,d)=\sum_i \max_j E_{q_i}^\top E_{d_j}
 \]
@@ -307,13 +314,12 @@ S(q,d)=\sum_i \max_j E_{q_i}^\top E_{d_j}
 \item ANN still works: high score needs at least one close token vector.
 \end{itemize}
 
-\columnbreak
-
 \head{RAG}
 \mini{Closed-book} answer from params only.\par
 \mini{Open-book} retrieve docs and answer from evidence.
 
 \mini{RAG factorization}
+\defs{\(q=\) query,\; \(a=\) answer,\; \(d=\) doc,\; \(\mathcal D=\) corpus,\; \(p_\eta=\) retriever,\; \(p_\theta=\) reader.}
 \[
 p(a\mid q)=\sum_{d\in\mathcal D} p_\eta(d\mid q)\, p_\theta(a\mid q,d)
 \]
@@ -343,8 +349,6 @@ p(a\mid q)=\sum_{d\in\mathcal D} p_\eta(d\mid q)\, p_\theta(a\mid q,d)
 \item encode passages separately; decoder attends across all
 \end{itemize}
 
-\columnbreak
-
 \head{Agents}
 \mini{Inference scaling}
 \begin{itemize}
@@ -358,6 +362,7 @@ p(a\mid q)=\sum_{d\in\mathcal D} p_\eta(d\mid q)\, p_\theta(a\mid q,d)
 \end{itemize}
 
 \mini{Agent loop}
+\defs{\(s_t=\) state,\; \(a_t=\) action,\; \(o_{t+1}=\) observation.}
 \[
 s_t \to a_t \to o_{t+1} \to s_{t+1}
 \]
@@ -387,6 +392,7 @@ s_t \to a_t \to o_{t+1} \to s_{t+1}
 \end{itemize}
 
 \mini{Best-of-\(n\)}
+\defs{\(p=\) base policy,\; \(q=\) best-of-\(n\) induced policy,\; \(n=\) number of samples.}
 \[
 \KL(q\|p)\le \log n
 \]
@@ -395,10 +401,9 @@ s_t \to a_t \to o_{t+1} \to s_{t+1}
 \item search error \(\neq\) model error; large policy shift needs exponential \(n\)
 \end{itemize}
 
-\columnbreak
-
 \head{Speculative / Contrastive}
 \mini{Speculative}
+\defs{\(p_t=\) target next-token dist,\; \(q_t=\) draft dist,\; \(\alpha=\) accept prob,\; \(A=\) accept rate.}
 \[
 \alpha(x)=\min\left(1,\frac{p_t(x)}{q_t(x)}\right),
 \qquad
@@ -410,6 +415,7 @@ A=1-\tfrac{1}{2}\lVert p_t-q_t\rVert_1
 \end{itemize}
 
 \mini{Contrastive}
+\defs{\(p_t^+=\) expert,\; \(p_t^-=\) amateur,\; \(\lambda=\) contrast penalty.}
 \[
 s_t(x)=\log p_t^+(x)-\lambda\log p_t^-(x)
 \]
@@ -455,6 +461,7 @@ s_t(x)=\log p_t^+(x)-\lambda\log p_t^-(x)
 \end{itemize}
 
 \mini{Idealized objective}
+\defs{\(\Sigma=\) vocab,\; \(f=\) tokenizer/segmentation fn,\; \(V=\) target vocab size.}
 \[
 \min_{\Sigma,f}\sum_i |f(x^{(i)})|
 \quad
@@ -480,6 +487,6 @@ s_t(x)=\log p_t^+(x)-\lambda\log p_t^-(x)
 \item no universal winner; special chat tokens stay atomic
 \end{itemize}
 
-\end{multicols*}
+\end{multicols}
 
 \end{document}
