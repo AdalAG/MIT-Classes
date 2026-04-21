@@ -630,33 +630,6 @@ s_{t+1}.
 
 \textbf{Exam intuition:} tokenization is a representation choice, not a solved preprocessing detail. The lecture's conclusion is basically ``we still do not know what the perfect tokenizer should optimize''.
 
-\section*{Past Exam Overlap}
-\begin{itemize}
-\item \textbf{Strongest overlap found: RLHF / reward regularization.} In the posted Fall 2024 6.861 midterm, a full problem asks you to optimize a two-response RLHF objective with rewards \(r(x,y_1)=1\), \(r(x,y_2)=0\), and a reference SFT policy \(p_0(y_1 \mid x)=p_0(y_2 \mid x)=0.5\).
-\item \textbf{Be ready to derive the scalar objective.} Writing \(p_1=p_\theta(y_1 \mid x)\) and \(p_2=1-p_1\), for \(\beta=1\) the old exam reduces
-\[
-J(p_1)=p_1-p_1\log p_1-(1-p_1)\log(1-p_1)+\log 0.5,
-\]
-then asks you to maximize it. The optimum is
-\[
-p_1^\star=\frac{e}{e+1},
-\qquad
-p_2^\star=\frac{1}{e+1}.
-\]
-\item \textbf{SFT masking has already appeared as a multiple-choice trap.} In \texttt{Quiz 1 Solutions.pdf}, a statement claiming that SFT loss is typically computed on both prompts and continuations is false; in practice chat SFT usually masks prompt/user tokens and trains mainly on assistant outputs.
-\item \textbf{Tokenization is the other strong overlap.} The posted Fall 2025 6.461 midterm contains a full BPE problem set: define
-\[
-C_k(D)=|\Sigma_k|+|f_k(D)|,
-\]
-then reason about how it changes with more BPE merges, manually run greedy merges, and compare character-level vs BPE-level language models.
-\item \textbf{Past tokenization takeaways worth memorizing:} on the \emph{training} corpus, one more BPE merge cannot increase \(C_k(D)\), because the vocabulary grows by at most one token while training-corpus length decreases by at least one. But greedy BPE is still not globally optimal: a different merge order can yield a shorter corpus after the same number of steps.
-\item \textbf{Be careful comparing perplexities across tokenizations.} A past exam explicitly tests that per-token perplexities from character and BPE models are not directly comparable. Compare total negative log-likelihood on the same raw test text:
-\[
-\mathrm{NLL} = \log(\mathrm{PPL}) \times \text{tokenized length}.
-\]
-\item \textbf{What I did \emph{not} find in the posted past exams:} no clear direct past questions on neural retrieval, RAG, agents, or language-model programming. The concrete posted overlap is heavily concentrated in post-training / RLHF and tokenization.
-\end{itemize}
-
 \section*{Likely Quiz Habits}
 \begin{itemize}
 \item Be able to write each objective and explain what every term is doing in plain English.
@@ -669,10 +642,10 @@ then reason about how it changes with more BPE merges, manually run greedy merge
 \end{multicols*}
 
 \clearpage
-\section*{Verbatim Past Exam Questions and Solutions}
+\section*{Practice Questions and Solutions}
 \footnotesize
 
-\subsection*{Fall 2024 6.861: Problem 3 --- Pretraining \& Fine-tuning [6 points]}
+\subsection*{Lecture 10 Practice Question (Fall 2024 6.861)}
 \textbf{Question.}
 
 Consider a simplified language model trained using Reinforcement Learning with Human Feedback
@@ -704,13 +677,15 @@ Recall that the objective of RLHF is to find LM with parameters \(\theta\) that 
 objective:
 \[
 J(\theta)=
-\mathbb{E}_{x \sim I}
+\mathbb{E}_{x \sim \mathcal{I}}
+\left[
 \mathbb{E}_{y \sim P_\theta(\cdot \mid x)}
 \left[
 r_\phi(x,y)-\beta \log \frac{P_\theta(y \mid x)}{P_{\theta_{\mathrm{SFT}}}(y \mid x)}
 \right]
+\right]
 \]
-where \(I\) is some fixed distribution. In this case, \(I\) places all its mass on the single prompt \(x\) given
+where \(\mathcal{I}\) is some fixed distribution. In this case, \(\mathcal{I}\) places all its mass on the single prompt \(x\) given
 at the beginning of this problem.
 
 Your goal is to solve this objective, i.e., find the probabilities \(P_\theta(y_1 \mid x)\) and \(P_\theta(y_2 \mid x)\) that maxi-
@@ -809,7 +784,7 @@ We can then set the derivative to 0 and simplify:
 p_1=\frac{e}{e+1}.
 \]
 
-\subsection*{Spring 2026 Quiz 1 Solutions: Multiple Choice Question 4}
+\subsection*{Lecture 8 Practice Question (Spring 2026 Quiz 1)}
 \textbf{Question.}
 
 Which of the following statements about language model pretraining are true? Select all that
@@ -835,7 +810,9 @@ NLP tasks such as text classification, question answering, and summarization.
 
 \textbf{Solution.} \((a)\) ONLY.
 
-\subsection*{Fall 2025 6.461: Tokenization True/False}
+\textbf{Explanation.} Choice (b) is false because in modern chat SFT, the loss is usually masked on prompt / user tokens and computed mainly on assistant continuations.
+
+\subsection*{Lecture 15 Practice Question 1 (6.461 Fall 2025)}
 \textbf{Question.}
 
 Determine whether each statement below is true or false.
@@ -855,7 +832,14 @@ Doing BPE enough times will eventually result in a training corpus that has leng
 \item False.
 \end{enumerate}
 
-\subsection*{Fall 2025 6.461: Problem 2 --- Tokenization [6 points]}
+\textbf{Explanation.}
+\begin{enumerate}
+\item BPE avoids OOV by falling back to the base vocabulary used to build the tokenizer.
+\item The underlying ``pick up to \(K\) tokens and segment the corpus as short as possible'' problem is not known to have a polynomial-time exact solution; in the course notes it is treated as intractable / NP-complete.
+\item With pretokenization, merges do not cross word boundaries, so repeated merging cannot collapse a multi-pretoken corpus into one giant token.
+\end{enumerate}
+
+\subsection*{Lecture 15 Practice Question 2 (6.461 Fall 2025)}
 \textbf{Question.}
 
 Let \(\Sigma_0 = \{a,b,\ldots,y,z,\text{space}\}\) be the base token vocabulary (i.e., only lowercase letters and the space
@@ -937,6 +921,8 @@ Explain your answer.
 \textbf{(a)} No. At each iteration, we add at most one item to the vocabulary, and the training set
 length decreases by at least 1.
 
+\textbf{Explanation.} Since \(C_k(D)=|\Sigma_k|+|f_k(D)|\), one merge changes the two pieces by \(+1\) and at most \(-1\) or better, so \(C_{k+1}(D_{\mathrm{training}})\le C_k(D_{\mathrm{training}})\).
+
 \textbf{(b)(i)}
 \[
 \texttt{an}
@@ -953,10 +939,14 @@ length decreases by at least 1.
 \texttt{ba}
 \]
 
+\textbf{Explanation.} This is a nice reminder that greedy BPE is only a local heuristic. A merge sequence that is not chosen greedily at step 1 can still produce a shorter corpus after the same total number of merges.
+
 \textbf{(c)} \(p_{\mathrm{bpe}}\) is better because the negative log-likelihood of the test set, i.e.,
 \[
 \log(\mathrm{perplexity}) \times \text{length of dataset},
 \]
 is lower.
+
+\textbf{Explanation.} Per-token perplexity depends on the tokenizer's unit of prediction, so the fair comparison is total log-probability of the same raw test text after accounting for tokenized length.
 
 \end{document}
