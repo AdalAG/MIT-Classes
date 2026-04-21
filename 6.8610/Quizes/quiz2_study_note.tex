@@ -630,6 +630,33 @@ s_{t+1}.
 
 \textbf{Exam intuition:} tokenization is a representation choice, not a solved preprocessing detail. The lecture's conclusion is basically ``we still do not know what the perfect tokenizer should optimize''.
 
+\section*{Past Exam Overlap}
+\begin{itemize}
+\item \textbf{Strongest overlap found: RLHF / reward regularization.} In the posted Fall 2024 6.861 midterm, a full problem asks you to optimize a two-response RLHF objective with rewards \(r(x,y_1)=1\), \(r(x,y_2)=0\), and a reference SFT policy \(p_0(y_1 \mid x)=p_0(y_2 \mid x)=0.5\).
+\item \textbf{Be ready to derive the scalar objective.} Writing \(p_1=p_\theta(y_1 \mid x)\) and \(p_2=1-p_1\), for \(\beta=1\) the old exam reduces
+\[
+J(p_1)=p_1-p_1\log p_1-(1-p_1)\log(1-p_1)+\log 0.5,
+\]
+then asks you to maximize it. The optimum is
+\[
+p_1^\star=\frac{e}{e+1},
+\qquad
+p_2^\star=\frac{1}{e+1}.
+\]
+\item \textbf{SFT masking has already appeared as a multiple-choice trap.} In \texttt{Quiz 1 Solutions.pdf}, a statement claiming that SFT loss is typically computed on both prompts and continuations is false; in practice chat SFT usually masks prompt/user tokens and trains mainly on assistant outputs.
+\item \textbf{Tokenization is the other strong overlap.} The posted Fall 2025 6.461 midterm contains a full BPE problem set: define
+\[
+C_k(D)=|\Sigma_k|+|f_k(D)|,
+\]
+then reason about how it changes with more BPE merges, manually run greedy merges, and compare character-level vs BPE-level language models.
+\item \textbf{Past tokenization takeaways worth memorizing:} on the \emph{training} corpus, one more BPE merge cannot increase \(C_k(D)\), because the vocabulary grows by at most one token while training-corpus length decreases by at least one. But greedy BPE is still not globally optimal: a different merge order can yield a shorter corpus after the same number of steps.
+\item \textbf{Be careful comparing perplexities across tokenizations.} A past exam explicitly tests that per-token perplexities from character and BPE models are not directly comparable. Compare total negative log-likelihood on the same raw test text:
+\[
+\mathrm{NLL} = \log(\mathrm{PPL}) \times \text{tokenized length}.
+\]
+\item \textbf{What I did \emph{not} find in the posted past exams:} no clear direct past questions on neural retrieval, RAG, agents, or language-model programming. The concrete posted overlap is heavily concentrated in post-training / RLHF and tokenization.
+\end{itemize}
+
 \section*{Likely Quiz Habits}
 \begin{itemize}
 \item Be able to write each objective and explain what every term is doing in plain English.
@@ -640,5 +667,296 @@ s_{t+1}.
 \end{itemize}
 
 \end{multicols*}
+
+\clearpage
+\section*{Verbatim Past Exam Questions and Solutions}
+\footnotesize
+
+\subsection*{Fall 2024 6.861: Problem 3 --- Pretraining \& Fine-tuning [6 points]}
+\textbf{Question.}
+
+Consider a simplified language model trained using Reinforcement Learning with Human Feedback
+(RLHF). We train the model on only one input prompt: \(x =\) ``What is 6.861?''.
+
+The model generates only two possible responses:
+\begin{enumerate}
+\item \(y_1 =\) ``6.861 is MIT's natural language processing course.''
+\item \(y_2 =\) ``6.861 is 13.722 divided by 2.''
+\end{enumerate}
+
+A reward model assigns scores based on how much each response aligns with human preferences.
+In this case, the first response is more desired, so the following scores are assigned:
+\[
+r_\phi(x, y_1)=1,
+\qquad
+r_\phi(x, y_2)=0.
+\]
+
+The original version of the model, trained through supervised fine-tuning (SFT), considered both
+responses equally valid, so it assigns the following probabilities:
+\[
+P_{\theta_{\mathrm{SFT}}}(y_1 \mid x)=0.5,
+\qquad
+P_{\theta_{\mathrm{SFT}}}(y_2 \mid x)=0.5.
+\]
+
+Recall that the objective of RLHF is to find LM with parameters \(\theta\) that maximizes the following
+objective:
+\[
+J(\theta)=
+\mathbb{E}_{x \sim I}
+\mathbb{E}_{y \sim P_\theta(\cdot \mid x)}
+\left[
+r_\phi(x,y)-\beta \log \frac{P_\theta(y \mid x)}{P_{\theta_{\mathrm{SFT}}}(y \mid x)}
+\right]
+\]
+where \(I\) is some fixed distribution. In this case, \(I\) places all its mass on the single prompt \(x\) given
+at the beginning of this problem.
+
+Your goal is to solve this objective, i.e., find the probabilities \(P_\theta(y_1 \mid x)\) and \(P_\theta(y_2 \mid x)\) that maxi-
+mize the objective function.
+
+\begin{enumerate}
+\item[(a)] (2 points) Let \(p_1 = P_\theta(y_1 \mid x)\) and \(p_2 = P_\theta(y_2 \mid x)\). Write the objective \(J(\theta)\) in terms of \(p_1\), \(p_2\),
+and \(\beta\).
+\item[(b)] (1 point) Let \(\beta = 1\). Express \(J(\theta)\) as a function of \(p_1\) only.
+\item[(c)] (3 points) Find the value of \(p_1\) that maximizes \(J(\theta)\) (for \(\beta = 1\)).
+\end{enumerate}
+
+\textbf{Solution.}
+
+\textbf{(a)} Since there is only one input \(x\), the outer expectation simplifies to evaluating
+at \(x\). The inner expectation over \(y\) becomes a sum over the two possible responses \(y_1\) and
+\(y_2\):
+\[
+J(\theta)
+=
+\mathbb{E}_{y \sim P_\theta(\cdot \mid x)}
+\left[
+r_\phi(x,y)-\beta \log \frac{P_\theta(y \mid x)}{P_{\theta_{\mathrm{SFT}}}(y \mid x)}
+\right]
+\]
+\[
+=
+\sum_y
+P_\theta(y \mid x)
+\left[
+r_\phi(x,y)-\beta \log \frac{P_\theta(y \mid x)}{P_{\theta_{\mathrm{SFT}}}(y \mid x)}
+\right].
+\]
+
+Substituting the known values:
+\[
+J(\theta)
+=
+p_1\left[1-\beta \log \frac{p_1}{0.5}\right]
++
+p_2\left[0-\beta \log \frac{p_2}{0.5}\right]
+\]
+\[
+=
+p_1(1-\beta(\ln p_1-\ln 0.5))-\beta p_2(\ln p_2-\ln 0.5)
+\]
+\[
+=
+p_1-\beta p_1 \ln p_1+\beta p_1 \ln 0.5-\beta p_2 \ln p_2+\beta p_2 \ln 0.5
+\]
+\[
+=
+p_1-\beta(p_1 \ln p_1+p_2 \ln p_2)+\beta(p_1+p_2)\ln 0.5.
+\]
+
+\textbf{(b)} Since \(p_2 = 1-p_1\), we substitute into \(J(\theta)\):
+\[
+J(\theta)
+=
+p_1-(p_1 \ln p_1+(1-p_1)\ln(1-p_1))+\ln 0.5
+\]
+\[
+=
+p_1-p_1\ln p_1-(1-p_1)\ln(1-p_1)+\ln 0.5.
+\]
+
+\textbf{(c)} We first compute the derivative of \(J\) with respect to \(p_1\):
+\[
+\frac{dJ}{dp_1}
+=
+1-(\ln p_1+1)-(-\ln(1-p_1)-1)
+\]
+\[
+=
+1-\ln p_1-1+\ln(1-p_1)+1
+\]
+\[
+=
+-\ln p_1+\ln(1-p_1)+1.
+\]
+
+We can then set the derivative to 0 and simplify:
+\[
+-\ln p_1+\ln(1-p_1)+1=0
+\]
+\[
+\ln p_1-\ln(1-p_1)=1
+\]
+\[
+\ln \left(\frac{p_1}{1-p_1}\right)=1
+\]
+\[
+\frac{p_1}{1-p_1}=e
+\]
+\[
+p_1=\frac{e}{e+1}.
+\]
+
+\subsection*{Spring 2026 Quiz 1 Solutions: Multiple Choice Question 4}
+\textbf{Question.}
+
+Which of the following statements about language model pretraining are true? Select all that
+apply.
+\begin{enumerate}
+\item[(a)] An autoregressive language model factorizes the joint probability as
+\[
+P(x_1,\ldots,x_n)=\prod_{t=1}^n P(x_t \mid x_{<t}),
+\]
+and can therefore compute the exact probability of any text sequence.
+\item[(b)] In Supervised Fine-Tuning (SFT), the training loss
+\[
+L_{\mathrm{SFT}}(\theta)=-\frac{1}{T}\sum_{t=1}^T \log p_\theta(y_t^\ast \mid x, y_{<t}^\ast)
+\]
+is typically computed on both prompts \(x\) and continuations \(y^\ast\).
+\item[(c)] Consider a masked language model that predicts a single given complete left and right
+contexts (i.e. to predict \(p(x_i \mid x_1,\ldots,x_{i-1},x_{i+1},\ldots x_n)\). Models pretrained for this masked
+objective are functionally equivalent to ordinary (autoregressive, ``decoder only'' LMs): both
+can directly compute the joint probability \(P(x_1,\ldots,x_n)\).
+\item[(d)] Lower perplexity on a held-out test set guarantees better performance on all downstream
+NLP tasks such as text classification, question answering, and summarization.
+\end{enumerate}
+
+\textbf{Solution.} \((a)\) ONLY.
+
+\subsection*{Fall 2025 6.461: Tokenization True/False}
+\textbf{Question.}
+
+Determine whether each statement below is true or false.
+\begin{enumerate}
+\item There are no out-of-vocabulary items in a corpus tokenized with BPE.
+\item Consider this problem: given a corpus \(C\) and a limit \(K\) on the vocabulary size, how can we
+choose up to \(K\) tokens and segment \(C\) into as few tokens as possible? We have a polynomial
+time algorithm (with respect to \(K\) and \(|C|\)) that solves this problem.
+\item Suppose we do BPE with pretokenization, making sure merges don't cross word boundaries.
+Doing BPE enough times will eventually result in a training corpus that has length 1.
+\end{enumerate}
+
+\textbf{Solution.}
+\begin{enumerate}
+\item True.
+\item False.
+\item False.
+\end{enumerate}
+
+\subsection*{Fall 2025 6.461: Problem 2 --- Tokenization [6 points]}
+\textbf{Question.}
+
+Let \(\Sigma_0 = \{a,b,\ldots,y,z,\text{space}\}\) be the base token vocabulary (i.e., only lowercase letters and the space
+token). Further \(\Sigma_k\) be the BPE tokenization vocabulary after \(k\) merge steps, starting with the
+base vocabulary. We thus have
+\[
+|\Sigma_0|=27,
+\qquad
+|\Sigma_k|=27+k.
+\]
+
+Let \(f_k : \Sigma_0^\ast \to \Sigma_k^\ast\) be the corresponding tokenization function. Given a corpus of text \(D\) let \(f_k(D)\)
+be the tokenized corpus, and further let \(|f_k(D)|\) be the length of the corpus after tokenization.
+
+\begin{enumerate}
+\item[(a)] [2 points] Define a metric \(C_k(D)\) that captures the total size of the BPE vocabulary and the
+corpus \(D\) under tokenization \(f_k\). Concretely, we have
+\[
+C_k(D)=|\Sigma_k|+|f_k(D)|.
+\]
+
+Suppose \(D_{\mathrm{training}}\) is the training dataset on which the BPE vocabulary was learned. Can we
+ever have the following?
+\[
+C_{k+1}(D_{\mathrm{training}}) > C_k(D_{\mathrm{training}})
+\]
+If yes, provide an example. If not, argue why the above is not possible.
+
+\item[(b)] [2 points] Consider the following text corpus \(D_{\mathrm{training}}\) for training your tokenizer.
+\[
+\texttt{banana banana ba}
+\]
+
+\begin{enumerate}
+\item[(i)] Suppose we perform two iterations of BPE on the above corpus, making sure that the
+byte pairs do not cross word boundaries. What are the new tokens (i.e., byte pairs) that
+are added? (If there are byte pairs with equal counts, you should take the byte pair that
+occurs first in the dataset.)
+\item[(ii)] Find an alternative sequence of two merges such that the length of the tokenized dataset
+under this tokenization is smaller than the one found via above.
+\end{enumerate}
+
+\item[(c)] [2 points] Suppose we train two language models. The first language model, \(p_{\mathrm{char}}\), is trained
+over raw character tokens. The second model, \(p_{\mathrm{bpe}}\), is trained over a BPE-tokenized corpus
+with the corresponding tokenization function \(f\). The perplexities of the respective models on
+a held-out test set \(D_{\mathrm{test}}\) are found to be:
+\[
+\mathrm{perplexity}_{\mathrm{char}}
+=
+\exp\left(
+-\frac{1}{|D_{\mathrm{test}}|}\log p_{\mathrm{char}}(D_{\mathrm{test}})
+\right)
+=
+\exp(2),
+\]
+\[
+\mathrm{perplexity}_{\mathrm{bpe}}
+=
+\exp\left(
+-\frac{1}{|f(D_{\mathrm{test}})|}\log p_{\mathrm{bpe}}(f(D_{\mathrm{test}}))
+\right)
+=
+\exp(6).
+\]
+
+Which is a better language model, assuming \(|D_{\mathrm{test}}| = 400\) and \(|f(D_{\mathrm{test}})| = 100\)?
+\[
+p_{\mathrm{char}}
+\qquad
+p_{\mathrm{bpe}}
+\qquad
+\text{It is not possible to tell from the above information.}
+\]
+Explain your answer.
+\end{enumerate}
+
+\textbf{Solution.}
+
+\textbf{(a)} No. At each iteration, we add at most one item to the vocabulary, and the training set
+length decreases by at least 1.
+
+\textbf{(b)(i)}
+\[
+\texttt{an}
+\]
+\[
+\texttt{ban}
+\]
+
+\textbf{(b)(ii)}
+\[
+\texttt{na}
+\]
+\[
+\texttt{ba}
+\]
+
+\textbf{(c)} \(p_{\mathrm{bpe}}\) is better because the negative log-likelihood of the test set, i.e.,
+\[
+\log(\mathrm{perplexity}) \times \text{length of dataset},
+\]
+is lower.
 
 \end{document}
