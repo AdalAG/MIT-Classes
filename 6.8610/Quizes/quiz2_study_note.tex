@@ -450,10 +450,73 @@ In practice, this is approximated over top-\(K\) retrieved documents.
 \textbf{Inference-time scaling idea:}
 some tasks improve if the model is allowed to think longer, sample more trajectories, or use tools before committing to a final answer.
 
+\textbf{Inference-time decoding bottleneck:}
+\begin{itemize}
+\item Training with teacher forcing is parallel across positions, but inference is autoregressive and sequential.
+\item Greedy decoding chooses the best next token locally, but it does \textbf{not} necessarily produce the highest-probability full sequence globally.
+\end{itemize}
+
+\textbf{Parallel vs sequential scaling:}
+\begin{itemize}
+\item \textbf{Parallel scaling:} explore multiple trajectories and keep or aggregate the best ones.
+\item \textbf{Sequential scaling:} spend more budget on a single trajectory, e.g.\ longer chain-of-thought or forcing the model to keep reasoning before stopping.
+\end{itemize}
+
 \textbf{Pass@1 vs pass@\(k\):}
 \begin{itemize}
 \item \textbf{pass@1}: expected accuracy from a single rollout.
 \item \textbf{pass@\(k\)}: success if at least one of \(k\) rollouts solves the task.
+\end{itemize}
+
+\textbf{Best-of-\(n\), self-consistency, and search error:}
+\begin{itemize}
+\item \textbf{Best-of-\(n\):} sample \(n\) complete outputs and keep the best under a score such as model likelihood, a reward model, or a verifier.
+\item \textbf{Self-consistency:} sample multiple reasoning traces and aggregate the final answers, often by majority vote.
+\item \textbf{Search error} means the inference procedure failed to find a good output the model could already score well; \textbf{model error} means the model itself prefers the wrong output.
+\item Best-of-\(n\) is a strong baseline because once full candidates are generated, their scores are easy to evaluate.
+\end{itemize}
+
+\textbf{Best-of-\(n\) distribution shift:}
+If outputs are sorted by reward, the induced best-of-\(n\) distribution is
+\[
+q(x_i)=
+\left(\sum_{j=1}^i p(x_j)\right)^n
+-
+\left(\sum_{j=1}^{i-1} p(x_j)\right)^n.
+\]
+It satisfies
+\[
+\KL(q\|p)\le \log n.
+\]
+So test-time sampling can tilt mass toward high-reward outputs, but achieving a large KL shift from the base policy requires exponentially many samples.
+
+\textbf{Speculative decoding:}
+\begin{itemize}
+\item A small draft model \(q_t(\cdot)\) proposes tokens and the large target model \(p_t(\cdot)\) verifies them in parallel.
+\item A proposed token \(x\) is accepted with probability
+\[
+\alpha(x)=\min\left(1,\frac{p_t(x)}{q_t(x)}\right).
+\]
+\item The final output distribution is still exactly the target distribution \(p_t(\cdot)\), so speculative decoding changes efficiency rather than the distribution being sampled.
+\item The acceptance rate is
+\[
+A(x_{<t})=1-\frac{1}{2}\left\lVert p_t(\cdot)-q_t(\cdot)\right\rVert_1,
+\]
+so speedup is best when the draft stays close to the target.
+\end{itemize}
+
+\textbf{Contrastive decoding:}
+\[
+s_t(x)=\log p_t^+(x)-\lambda \log p_t^-(x)
+\]
+which is equivalent to maximizing
+\[
+\frac{p_t^+(x)}{(p_t^-(x))^\lambda}.
+\]
+\begin{itemize}
+\item The amateur model penalizes generic tokens that it over-prefers.
+\item Small \(\lambda\) behaves close to ordinary expert decoding.
+\item Large \(\lambda\) pushes harder toward expert-distinctive tokens, but if it is too large it can damage coherence by over-penalizing common reasonable words.
 \end{itemize}
 
 \textbf{Agent loop abstraction:}
@@ -505,7 +568,7 @@ s_{t+1}.
 \item An agent must stay anchored to the \textbf{goal}, not just predict locally likely next tokens.
 \end{itemize}
 
-\textbf{Exam intuition:} agents generalize RAG. Instead of hard-coding all outside computation, we give the model some control over when and how to invoke tools.
+\textbf{Exam intuition:} this lecture combines two post-training levers after the model already exists: better search / decoding over the same model, and agentic tool use inside an environment. Better search fixes \textbf{search} errors, not \textbf{model} errors; agents add actions, observations, and external state.
 
 \section*{Lecture 14: Language Model Programming}
 \textbf{Main shift:}
@@ -648,7 +711,7 @@ s_{t+1}.
 \item \textbf{Lecture 10:} A baseline changes variance, not the expectation of vanilla policy gradient. PPO clipping is about stable policy updates; GRPO replaces learned value estimates with within-group normalization.
 \item \textbf{Lecture 11:} Cross-encoders maximize interaction but destroy first-stage retrieval latency. Dual-encoders maximize precompute but compress each document to one vector. Late interaction is the middle ground.
 \item \textbf{Lecture 12:} A wrong RAG answer can come from either retrieval failure or reader failure. If the right document is already in top-\(K\), the issue is now credit assignment and evidence use, not document access.
-\item \textbf{Lecture 13:} More raw context is not always better. Long-horizon agents need compact state, tool feedback, and goal tracking, not just a larger prompt.
+\item \textbf{Lecture 13:} Greedy decoding is local, not globally sequence-optimal. Best-of-\(n\) buys only logarithmic KL shift in \(n\). Speculative decoding preserves the target distribution, whereas contrastive decoding deliberately changes the decoding objective. Long-horizon agents still need compact state, tool feedback, and goal tracking.
 \item \textbf{Lecture 14:} Prompt optimization can improve instructions and decomposition, but it cannot inject domain knowledge the model does not already have.
 \item \textbf{Lecture 15:} Better compression or fewer tokens does not automatically mean a better language model or better downstream behavior.
 \end{itemize}
@@ -659,6 +722,7 @@ s_{t+1}.
 \item \textbf{Pick the right method under constraints.} The deciding axis is usually latency, precompute, token-level interaction, sample efficiency, or credit assignment.
 \item \textbf{Tell true from false.} Watch for absolute language such as ``guarantees'', ``equivalent'', ``always'', and ``only''.
 \item \textbf{Map a failure mode to the right intervention.} If the issue is instruction ambiguity, think prompt optimization or modularization. If it is missing knowledge, think retrieval, data, or weights. If it is long-horizon control, think tools, state, and RL.
+\item \textbf{Separate search error from model error.} If better inference could rescue the same model, think best-of-\(n\), self-consistency, or search. If the model itself scores the wrong answer higher, search alone will not fix it.
 \item \textbf{Justify a choice by rejecting the others.} The staff likes one-sentence reasons for why the winner works and why each loser misses one required property.
 \item \textbf{Include systems constraints when relevant.} For retrieval and agents, quality alone is not the whole story; mention ANN, precompute, context budget, or environment interaction when needed.
 \end{itemize}
@@ -907,6 +971,34 @@ full history is too expensive. Which intervention best targets the core failure 
 \textbf{Solution.} \((b)\).
 
 \textbf{Explanation.} The lecture's core issue is context rot in long-horizon tasks. Compaction preserves goal-relevant state while keeping cost manageable. The other choices either ignore the failure mode or reduce capability.
+
+\subsection*{Lecture 13 Practice Question 2}
+\textbf{Question.}
+
+Which of the following statements about inference-time decoding are true? Select all that apply.
+\begin{enumerate}
+\item[(a)] Greedy decoding always returns the highest-probability complete sequence under an autoregressive language model.
+\item[(b)] For best-of-\(n\), the induced distribution \(q\) can shift mass toward high-reward outputs, but the bound
+\[
+\KL(q\|p)\le \log n
+\]
+means that very large shifts require exponentially many samples.
+\item[(c)] Speculative decoding accelerates generation by changing the final token distribution from the target model to an interpolation between the draft and target models.
+\item[(d)] If the draft and target next-token distributions are close in total variation distance, speculative decoding should have a higher token acceptance rate.
+\item[(e)] In contrastive decoding, increasing \(\lambda\) penalizes tokens favored by the amateur more strongly, and if \(\lambda\) is too large coherence can suffer.
+\end{enumerate}
+
+\textbf{Solution.} \((b),(d),(e)\).
+
+\textbf{Explanation.} Choice (a) is false because greedy decoding is a local next-token decision rule, not a global sequence optimizer. Choice (b) is true: best-of-\(n\) can move probability toward better outputs, but only logarithmically in \(n\) in KL. Choice (c) is false because speculative decoding preserves the exact target distribution; it changes efficiency, not the distribution being sampled. Choice (d) is true because
+\[
+A(x_{<t})=1-\frac{1}{2}\left\lVert p_t(\cdot)-q_t(\cdot)\right\rVert_1,
+\]
+so closer draft and target distributions imply higher acceptance. Choice (e) is true because larger \(\lambda\) increases the amateur penalty in
+\[
+s_t(x)=\log p_t^+(x)-\lambda\log p_t^-(x),
+\]
+which can improve distinctiveness at first but eventually over-penalize common reasonable tokens.
 
 \subsection*{Lecture 14 Practice Question}
 \textbf{Question.}

@@ -1,4 +1,4 @@
-\documentclass[9pt,landscape]{article}
+\documentclass[10pt,landscape]{article}
 
 \usepackage[letterpaper,margin=0.18in]{geometry}
 \usepackage{amsmath,amssymb,mathtools,array}
@@ -321,38 +321,34 @@ p(a\mid q)=\sum_{d\in\mathcal D} p_\eta(d\mid q)\, p_\theta(a\mid q,d)
 \text{practice: approximate over top-}K
 \]
 
-\mini{Reader styles}
+\mini{Reader choice}
 \begin{itemize}
-\item Extractive: predict answer span.
-\item Generative: decode conditioned on retrieved docs.
+\item extractive = span; generative = decode over docs
 \end{itemize}
 
-\mini{Retriever supervision issue}
+\mini{Retriever supervision}
 \begin{itemize}
-\item Often only \((q,a)\), not gold docs.
-\item Answer-containing doc is only a proxy for usefulness.
+\item Often only \((q,a)\), not gold docs; answer-containing doc is only a proxy.
 \item Search relevance and answer usefulness are related, not identical.
 \end{itemize}
 
 \mini{Credit assignment}
 \begin{itemize}
 \item Right doc in top-\(K\) + wrong answer \(\Rightarrow\) reader/evidence-use failure.
-\item Latent doc marginalization helps separate retriever success from reader failure.
-\item But hard to initialize; junk top-\(K\) can push memorization; index refresh is costly.
+\item Latent doc marginalization separates retriever success from reader failure; junk top-\(K\) can still push memorization.
 \end{itemize}
 
 \mini{FiD}
 \begin{itemize}
-\item Encode passages separately.
-\item Decoder attends over all passage encodings.
+\item encode passages separately; decoder attends across all
 \end{itemize}
 
 \columnbreak
 
 \head{Agents}
-\mini{Inference-time scaling}
+\mini{Inference scaling}
 \begin{itemize}
-\item More thinking, more samples, or more tool use can improve outcomes.
+\item Parallel: pass@\(k\), best-of-\(n\), self-consistency. Sequential: longer CoT / ``Wait'' forcing.
 \end{itemize}
 
 \mini{Pass@1 vs pass@\(k\)}
@@ -366,13 +362,9 @@ p(a\mid q)=\sum_{d\in\mathcal D} p_\eta(d\mid q)\, p_\theta(a\mid q,d)
 s_t \to a_t \to o_{t+1} \to s_{t+1}
 \]
 
-\mini{Tool use in token space}
+\mini{Tool use}
 \begin{itemize}
-\item emit tool call
-\item interrupt generation
-\item execute tool
-\item append observation
-\item resume generation
+\item emit tool call, execute externally, append observation, continue generation
 \end{itemize}
 
 \mini{ReAct vs CodeAct}
@@ -383,16 +375,56 @@ s_t \to a_t \to o_{t+1} \to s_{t+1}
 
 \mini{Long horizon}
 \begin{itemize}
-\item Large envs + persistent state + context rot.
-\item Compaction keeps active context small while preserving task state.
-\item For agents, quality alone is incomplete; mention environment interaction and cost.
+\item context rot + stateful environments
+\item compaction keeps active context small while preserving task state
+\item mention environment interaction and cost, not just answer quality
+\end{itemize}
+
+\head{Decoding}
+\mini{Greedy trap}
+\begin{itemize}
+\item local argmax \(\neq\) best full sequence
+\end{itemize}
+
+\mini{Best-of-\(n\)}
+\[
+\KL(q\|p)\le \log n
+\]
+\begin{itemize}
+\item sample \(n\) full outputs, keep best by reward/verifier; strong baseline
+\item search error \(\neq\) model error; large policy shift needs exponential \(n\)
+\end{itemize}
+
+\columnbreak
+
+\head{Speculative / Contrastive}
+\mini{Speculative}
+\[
+\alpha(x)=\min\left(1,\frac{p_t(x)}{q_t(x)}\right),
+\qquad
+A=1-\tfrac{1}{2}\lVert p_t-q_t\rVert_1
+\]
+\begin{itemize}
+\item draft \(q_t\) proposes, target \(p_t\) verifies; final token law still \(p_t\)
+\item best when draft is close to target; bigger draft can raise acceptance but lose speed
+\end{itemize}
+
+\mini{Contrastive}
+\[
+s_t(x)=\log p_t^+(x)-\lambda\log p_t^-(x)
+\]
+\[
+\max_x s_t(x)\equiv \max_x \frac{p_t^+(x)}{(p_t^-(x))^\lambda}
+\]
+\begin{itemize}
+\item small \(\lambda\): near expert decoding
+\item large \(\lambda\): penalize generic amateur-favored tokens; too large hurts coherence
 \end{itemize}
 
 \head{LM Programming}
 \mini{Natural-language signatures}
 \begin{itemize}
-\item specify \emph{what}, not model-specific \emph{how}
-\item e.g.\ \texttt{thread -> events, actions}
+\item specify \emph{what}, not model-specific \emph{how}; e.g.\ \texttt{thread -> events, actions}
 \end{itemize}
 
 \mini{Three ingredients}
@@ -402,43 +434,24 @@ s_t \to a_t \to o_{t+1} \to s_{t+1}
 \item data / feedback
 \end{itemize}
 
-\columnbreak
-
-\head{Prompt / Program Optimization}
-\mini{Compile intent into}
+\mini{Compile intent}
 \begin{itemize}
-\item prompts
-\item weights (FT / RL)
-\item inference pipeline
+\item prompts, weights (FT / RL), inference pipeline
 \end{itemize}
 
-\mini{Prompt optimization helps when}
+\mini{Intervention map}
 \begin{itemize}
-\item the base model already has the capability
-\item task decomposition / instruction wording is the issue
-\item we want sample-efficient improvement
-\end{itemize}
-
-\mini{Prompt optimization limits}
-\begin{itemize}
-\item cannot add missing domain knowledge
-\item depends on the model being able to follow improved instructions
-\item complements FT / RL; does not replace them
-\end{itemize}
-
-\mini{Fast intervention map}
-\begin{itemize}
-\item underspecified task \(\Rightarrow\) modularize + signatures + prompt/program optimization
-\item missing knowledge \(\Rightarrow\) retrieval, better data, or weights
-\item long-horizon control \(\Rightarrow\) tools, state management, RL
+\item underspecified task \(\Rightarrow\) modularize + prompt/program optimization
+\item missing knowledge \(\Rightarrow\) retrieval, data, or weights
+\item prompt optimization cannot add knowledge; it complements FT / RL
 \end{itemize}
 
 \head{Tokenization}
 \mini{Representation tradeoff}
 \begin{itemize}
-\item \textbf{byte:} finite vocab, long seqs, poor semantic units
-\item \textbf{word:} short seqs, brittle OOV/morphology/multilinguality
-\item \textbf{subword:} practical middle ground
+\item byte: finite vocab, long seqs
+\item word: short seqs, brittle OOV/morphology
+\item subword: practical middle ground
 \end{itemize}
 
 \mini{Idealized objective}
@@ -448,36 +461,23 @@ s_t \to a_t \to o_{t+1} \to s_{t+1}
 \text{s.t. } |\Sigma|=V
 \]
 
-\head{BPE + Friends}
 \mini{BPE}
 \begin{itemize}
-\item start from bytes/chars
-\item merge most frequent adjacent pair repeatedly
-\item store merge list
-\item apply merges greedily at test time
-\end{itemize}
-
-\mini{Pretokenization}
-\begin{itemize}
-\item often forbid merges across spaces / punctuation / digit chunks
-\item ugly but very important in practice
+\item start from bytes/chars; repeatedly merge most frequent adjacent pair
+\item store merge list; apply merges greedily at test time
 \end{itemize}
 
 \mini{Other families}
 \begin{itemize}
-\item \textbf{WordPiece:} BPE-like, more likelihood / PMI flavored
-\item \textbf{Unigram LM:} start big, prune low-utility tokens
-\item \textbf{SentencePiece:} framework for BPE / Unigram without whitespace assumptions
+\item WordPiece: likelihood / PMI flavored
+\item Unigram LM: start big, prune
+\item SentencePiece: BPE / Unigram without whitespace assumptions
 \end{itemize}
 
-\mini{Non-obvious truths}
+\mini{Keep straight}
 \begin{itemize}
-\item Compression \(\neq\) downstream quality.
-\item Vocabulary size effects can be weaker than expected.
-\item Pretokenization choices matter a lot.
-\item No universal tokenizer winner.
-\item Byte-level / tokenizer-free methods are getting stronger again.
-\item Special system/user/assistant tokens stay atomic in chat tuning.
+\item pretokenization matters; compression \(\neq\) downstream quality
+\item no universal winner; special chat tokens stay atomic
 \end{itemize}
 
 \end{multicols*}
