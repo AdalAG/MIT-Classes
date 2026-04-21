@@ -59,8 +59,19 @@ p(a \mid q)=\sum_d p(d \mid q)p(a \mid q,d).
 \]
 \item \textbf{High-yield contrasts to handwrite:} SFT vs ranking losses vs RL; cross-encoder vs dual-encoder vs late interaction; closed-book QA vs RAG vs agents; byte-level vs BPE / WordPiece / Unigram.
 \item \textbf{Always reserve space for failure modes.} This course repeatedly asks not just what works, but what breaks: SFT can teach style over truth, DPO can amplify noisy majority preferences, dense retrievers can fail OOD, RAG can memorize if retrieval is bad, agents suffer context rot, and tokenizer compression does not reliably predict downstream quality.
+\item \textbf{Leave a tiny box for elimination logic.} Write one-line reminders such as ``cross-encoder = best interaction, worst latency'', ``DPO = reference model, no separate reward model'', and ``better compression does not imply better downstream performance'' so you can kill distractors quickly.
 \item \textbf{If space is tight, drop examples before dropping objectives.} Keep one anchor example per lecture at most.
 \item \textbf{Do not waste handwritten space on dates, author names, or leaderboard trivia.} Spend it on equations, assumptions, and ``what term does what?'' explanations.
+\end{itemize}
+
+\section*{Question Pattern Cheat Sheet}
+\begin{itemize}
+\item \textbf{Must be true / enough information?} Start from hard constraints: signs, normalization, masking, top-\(K\) truncation, precomputability, and what is or is not conditioned on the prompt or retrieved document. Do not answer from intuition alone.
+\item \textbf{Best design choice?} First identify the real bottleneck: supervision quality, reward credit assignment, query latency, token-level interaction, long-horizon state management, or representation choice.
+\item \textbf{Select all that apply.} Evaluate each option independently. The teaching team likes tempting wrong answers that fail on one precise word such as ``guarantees'', ``equivalent'', ``always'', or ``only''.
+\item \textbf{Simplest plausible model.} Write the lecture formula first, then substitute the new assumption literally. If only some data fraction helps, replace the data term. If only a subset of parameters is effectively available, scale the capacity term too.
+\item \textbf{Discuss all options briefly.} Give the winning reason in one line, then reject each losing option by naming the missing property.
+\item \textbf{Toy derivation?} Expect short algebra where the real point is to isolate the one changing variable, identify a constant, or see what becomes zero after a simplifying assumption.
 \end{itemize}
 
 \section*{Course Throughline}
@@ -630,13 +641,26 @@ s_{t+1}.
 
 \textbf{Exam intuition:} tokenization is a representation choice, not a solved preprocessing detail. The lecture's conclusion is basically ``we still do not know what the perfect tokenizer should optimize''.
 
-\section*{Likely Quiz Habits}
+\section*{Common Traps and Invariances}
 \begin{itemize}
-\item Be able to write each objective and explain what every term is doing in plain English.
-\item Expect compare/contrast questions framed around sample efficiency, latency, credit assignment, or inductive bias.
-\item When asked ``why does this help?'', answer with the bottleneck it addresses: better supervision, better reward credit, better retrieval structure, better tool use, or better representation.
-\item For retrieval and agents, mention systems constraints alongside model quality. This part of the course is explicitly about quality \emph{and} latency / environment interaction.
-\item For tokenization, do not overclaim. The lecture repeatedly emphasized uncertainty: good compression is not the same thing as a universally good tokenizer.
+\item \textbf{Lecture 8:} In chat SFT, the loss is usually masked on prompt / user tokens and computed mainly on assistant tokens.
+\item \textbf{Lecture 9:} DPO uses LM probabilities relative to a reference model. It does not require first training a separate reward model and then running RL.
+\item \textbf{Lecture 10:} A baseline changes variance, not the expectation of vanilla policy gradient. PPO clipping is about stable policy updates; GRPO replaces learned value estimates with within-group normalization.
+\item \textbf{Lecture 11:} Cross-encoders maximize interaction but destroy first-stage retrieval latency. Dual-encoders maximize precompute but compress each document to one vector. Late interaction is the middle ground.
+\item \textbf{Lecture 12:} A wrong RAG answer can come from either retrieval failure or reader failure. If the right document is already in top-\(K\), the issue is now credit assignment and evidence use, not document access.
+\item \textbf{Lecture 13:} More raw context is not always better. Long-horizon agents need compact state, tool feedback, and goal tracking, not just a larger prompt.
+\item \textbf{Lecture 14:} Prompt optimization can improve instructions and decomposition, but it cannot inject domain knowledge the model does not already have.
+\item \textbf{Lecture 15:} Better compression or fewer tokens does not automatically mean a better language model or better downstream behavior.
+\end{itemize}
+
+\section*{Likely Question Archetypes}
+\begin{itemize}
+\item \textbf{Write or simplify an objective.} Be able to expand a lecture formula on a toy example and say what each term is doing in plain English.
+\item \textbf{Pick the right method under constraints.} The deciding axis is usually latency, precompute, token-level interaction, sample efficiency, or credit assignment.
+\item \textbf{Tell true from false.} Watch for absolute language such as ``guarantees'', ``equivalent'', ``always'', and ``only''.
+\item \textbf{Map a failure mode to the right intervention.} If the issue is instruction ambiguity, think prompt optimization or modularization. If it is missing knowledge, think retrieval, data, or weights. If it is long-horizon control, think tools, state, and RL.
+\item \textbf{Justify a choice by rejecting the others.} The staff likes one-sentence reasons for why the winner works and why each loser misses one required property.
+\item \textbf{Include systems constraints when relevant.} For retrieval and agents, quality alone is not the whole story; mention ANN, precompute, context budget, or environment interaction when needed.
 \end{itemize}
 
 \end{multicols*}
@@ -811,6 +835,96 @@ NLP tasks such as text classification, question answering, and summarization.
 \textbf{Solution.} \((a)\) ONLY.
 
 \textbf{Explanation.} Choice (b) is false because in modern chat SFT, the loss is usually masked on prompt / user tokens and computed mainly on assistant continuations.
+
+\subsection*{Lecture 9 Practice Question}
+\textbf{Question.}
+
+Which of the following statements about preference learning are true? Select all that apply.
+\begin{enumerate}
+\item[(a)] Under the Bradley-Terry model,
+\[
+P(y_w \succ y_\ell \mid x)=\sigma(r(x,y_w)-r(x,y_\ell)).
+\]
+\item[(b)] DPO requires first training a separate scalar reward model and then running RL against that reward model.
+\item[(c)] Using a reference model in DPO helps prevent the learned policy from drifting too far while satisfying only relative winner/loser constraints.
+\item[(d)] Pairwise preference labels can be easier for humans to provide than writing ideal outputs from scratch.
+\end{enumerate}
+
+\textbf{Solution.} \((a),(c),(d)\).
+
+\textbf{Explanation.} Choice (b) is false because DPO works directly with LM probabilities relative to a reference model rather than first fitting a separate reward model and then doing RL.
+
+\subsection*{Lecture 11 Practice Question}
+\textbf{Question.}
+
+You need a first-stage retriever over tens of millions of documents. At query time, you can afford
+only a small amount of query-dependent Transformer compute, but you still want token-level
+query-document interaction so that a rare query term can match the best token inside each document
+instead of compressing the whole document to one vector. Which single design choice best fits
+these constraints?
+\begin{enumerate}
+\item[(a)] Score every candidate document with a cross-encoder.
+\item[(b)] Use a dual-encoder with one embedding per document.
+\item[(c)] Use a late-interaction retriever such as ColBERT with precomputed document token embeddings.
+\item[(d)] Skip retrieval and use a closed-book language model.
+\end{enumerate}
+
+\textbf{Solution.} \((c)\).
+
+\textbf{Explanation.} A cross-encoder gives the richest interaction but is too expensive as a first-stage retriever. A dual-encoder is fast but loses token-level matching by collapsing each document to one vector. Late interaction preserves per-token matching while still allowing offline document encoding.
+
+\subsection*{Lecture 12 Practice Question}
+\textbf{Question.}
+
+A RAG system retrieves top-\(K\) documents for each query. On many examples, a supporting
+document is already present in the retrieved top-\(K\), but the final answer is still wrong because
+the generator fails to use that evidence correctly. Which statement best explains why latent-document
+marginalization can be attractive during training?
+\begin{enumerate}
+\item[(a)] It gives better credit assignment between retriever and reader than only rewarding the final answer.
+\item[(b)] It guarantees the reader will not memorize answers in its parameters.
+\item[(c)] It removes the need for a good retriever initialization.
+\item[(d)] It makes refreshing the document index cheaper.
+\end{enumerate}
+
+\textbf{Solution.} \((a)\).
+
+\textbf{Explanation.} When the right document is retrieved but the answer is still wrong, the training signal should separate retriever success from reader failure. That is the credit-assignment advantage. The other choices are either false guarantees or describe drawbacks rather than benefits.
+
+\subsection*{Lecture 13 Practice Question}
+\textbf{Question.}
+
+You are building an agent for long-horizon software tasks over a large codebase. The model often
+starts correctly but performance degrades as the raw interaction history grows, and simply using the
+full history is too expensive. Which intervention best targets the core failure mode?
+\begin{enumerate}
+\item[(a)] Keep the entire uncompressed interaction history in the active prompt at all times.
+\item[(b)] Use context condensation / compaction so only task-relevant state stays active while older details are summarized externally.
+\item[(c)] Remove tool use so the model never leaves pure text generation.
+\item[(d)] Lower \(k\) in pass@\(k\) evaluation so the agent commits faster.
+\end{enumerate}
+
+\textbf{Solution.} \((b)\).
+
+\textbf{Explanation.} The lecture's core issue is context rot in long-horizon tasks. Compaction preserves goal-relevant state while keeping cost manageable. The other choices either ignore the failure mode or reduce capability.
+
+\subsection*{Lecture 14 Practice Question}
+\textbf{Question.}
+
+You have a strong base model for a repeated extraction workflow. The main problem is not missing
+world knowledge; it is that the instructions and output contract are underspecified, and the same
+task must be solved reliably over many inputs. Which first intervention is most aligned with the
+lecture?
+\begin{enumerate}
+\item[(a)] Pretrain the model longer on generic web text.
+\item[(b)] Use modular natural-language signatures and prompt / program optimization over that pipeline.
+\item[(c)] Start with RL from sparse end-to-end reward as the default first step.
+\item[(d)] Collapse everything into one giant prompt so all context is visible at once.
+\end{enumerate}
+
+\textbf{Solution.} \((b)\).
+
+\textbf{Explanation.} Lecture 14 emphasizes turning fragile prompting into reusable modules with explicit input-output contracts, then optimizing prompts or programs at that abstraction level. Pretraining addresses missing knowledge, not underspecified task interfaces.
 
 \subsection*{Lecture 15 Practice Question 1 (6.461 Fall 2025)}
 \textbf{Question.}
