@@ -1,0 +1,485 @@
+\documentclass[9pt,landscape]{article}
+
+\usepackage[letterpaper,margin=0.18in]{geometry}
+\usepackage{amsmath,amssymb,mathtools,array}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{multicol}
+\usepackage{enumitem}
+
+\pagestyle{empty}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0pt}
+\setlength{\columnsep}{7pt}
+\setlength{\premulticols}{2pt}
+\setlength{\postmulticols}{2pt}
+\setlength{\multicolsep}{2pt}
+\setlength{\abovedisplayskip}{2pt}
+\setlength{\belowdisplayskip}{2pt}
+\setlength{\abovedisplayshortskip}{1pt}
+\setlength{\belowdisplayshortskip}{1pt}
+\setlist[itemize]{leftmargin=*, itemsep=0pt, topsep=1pt, parsep=0pt, partopsep=0pt}
+\setlist[enumerate]{leftmargin=*, itemsep=0pt, topsep=1pt, parsep=0pt, partopsep=0pt}
+
+\makeatletter
+\renewcommand{\section}{\@startsection{section}{1}{0mm}%
+  {-0.6ex plus -.2ex minus -.1ex}%
+  {0.4ex plus .1ex}%
+  {\normalfont\normalsize\bfseries}}
+\renewcommand{\subsection}{\@startsection{subsection}{2}{0mm}%
+  {-0.5ex plus -.2ex minus -.1ex}%
+  {0.2ex plus .1ex}%
+  {\normalfont\small\bfseries}}
+\makeatother
+
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\KL}{\operatorname{KL}}
+\newcommand{\clip}{\operatorname{clip}}
+\newcommand{\InfoNCE}{\operatorname{InfoNCE}}
+\newcommand{\head}[1]{\section*{#1}}
+\newcommand{\mini}[1]{\textbf{#1}}
+
+\begin{document}
+\raggedright
+\scriptsize
+
+\begin{center}
+\textbf{6.8610 Quiz 2 Cheatsheet}
+\end{center}
+
+\mini{Question cues:} bottleneck first; watch absolute words (\emph{always}, \emph{only}, \emph{guarantees}, \emph{equivalent}); reject answers by missing property; say quality \emph{and} systems constraint; simplify toy objectives before interpreting them.
+
+\begin{multicols*}{4}
+\raggedcolumns
+
+\head{Post-Training Flow}
+\[
+\text{pretrain}
+\rightarrow
+\text{mid-train}
+\rightarrow
+\text{SFT}
+\rightarrow
+\text{prefs}
+\rightarrow
+\text{RL}
+\]
+
+\mini{Mid-train}
+\begin{itemize}
+\item Continue next-token prediction on smaller, higher-value data: code, books, technical text, long-context/tool traces.
+\item Shorter ctx can be cheaper early; expand ctx later once basic priors exist.
+\item Later data matters more: better to forget early boilerplate than late high-value data.
+\end{itemize}
+
+\mini{SFT objective}
+\[
+\max_\theta \sum_{(x,y)\in\mathcal D}\log p_\theta(y\mid x)
+\]
+\begin{itemize}
+\item Usually mask loss on prompt/user tokens; supervise mainly assistant tokens.
+\item Teaches instruction following, chat format, refusals, response structure.
+\item Extracts latent skills; does not replace pretraining.
+\end{itemize}
+
+\mini{SFT failure modes}
+\begin{itemize}
+\item Label bottleneck.
+\item One gold answer when many would work.
+\item Can teach style of competence more than calibrated truth.
+\item ``I don't know'' is hard from demos alone.
+\end{itemize}
+
+\columnbreak
+
+\head{Preference Learning}
+\mini{Setup} \(x=\) prompt,\; \(y_w=\) winner,\; \(y_\ell=\) loser,\; \(p_0=\) reference.
+
+\mini{Bradley--Terry}
+\[
+P(y_w\succ y_\ell\mid x)=\sigma(r(x,y_w)-r(x,y_\ell))
+\]
+\[
+\mathcal L_{\mathrm{BT}}
+=
+-\log \sigma(r_\theta(x,y_w)-r_\theta(x,y_\ell))
+\]
+
+\mini{DPO shorthand}
+\[
+\Delta_\theta
+=
+\log\frac{p_\theta(y_w\mid x)}{p_0(y_w\mid x)}
+-
+\log\frac{p_\theta(y_\ell\mid x)}{p_0(y_\ell\mid x)}
+\]
+\[
+\mathcal L_{\mathrm{DPO}}=-\log \sigma(\lambda\Delta_\theta)
+\]
+\begin{itemize}
+\item Uses LM probs relative to reference; no separate reward model required.
+\item Reference model limits drift while satisfying winner/loser constraints.
+\item Pairwise labels are often easier than writing ideal completions.
+\end{itemize}
+
+\mini{Reward parameterization behind DPO}
+\[
+r_\theta(x,y)
+=
+\lambda\log\frac{p_\theta(y\mid x)}{p_0(y\mid x)}
++ \lambda\log Z(x)
+\]
+
+\mini{If SLiC fits in memory}
+\[
+\max(0,\Delta+\log p_\theta(y_\ell\mid x)-\log p_\theta(y_w\mid x))
+\]
+
+\mini{Keep straight}
+\begin{itemize}
+\item SFT = demonstrations.
+\item DPO = preferences + reference.
+\item RL = optimize reward on fresh model samples.
+\end{itemize}
+
+\columnbreak
+
+\head{RLHF Basics}
+\mini{Reward-regularized objective}
+\[
+J(\theta)
+=
+\E_x\E_{y\sim p_\theta(\cdot\mid x)}[r(x,y)]
+-\lambda \KL(p_\theta\|p_0)
+\]
+
+\mini{Reward model}
+\[
+r_\phi(x,y)=w^\top h_\phi(x,y)
+\]
+\[
+\max_\phi \log \sigma(r_\phi(x,y_w)-r_\phi(x,y_\ell))
+\]
+
+\mini{Vanilla policy gradient}
+\[
+\nabla_\theta \E_{y\sim p_\theta}[r]
+=
+\E_{y\sim p_\theta}
+\left[\nabla_\theta\log p_\theta(y\mid x)\, r(x,y)\right]
+\]
+
+\mini{Value / advantage}
+\[
+V(x)=\E_{y\sim p_\theta}[r(x,y)],
+\qquad
+A(x,y)=r(x,y)-V(x)
+\]
+\begin{itemize}
+\item Baseline reduces variance; does \emph{not} change expected gradient.
+\item Vanilla PG is unbiased, high variance, on-policy.
+\item Big RL story: learn reward from scarce labels, then use compute on new samples.
+\end{itemize}
+
+\mini{KL-folding approx.}
+\[
+r'(x,y)=r(x,y)-\log p_\theta(y\mid x)+\log p_0(y\mid x)
+\]
+
+\mini{Tiny cue}
+\begin{itemize}
+\item Equal SFT probs, rewards \(1/0\), \(\beta=1\) \(\Rightarrow\) better response gets prob \(e/(e+1)\).
+\end{itemize}
+
+\columnbreak
+
+\head{PPO / GRPO}
+\mini{Importance ratio}
+\[
+\rho(x,y)=\frac{p_\theta(y\mid x)}{p_{\theta_{\mathrm{old}}}(y\mid x)},
+\qquad
+\bar\rho=\clip(\rho,1-\epsilon,1+\epsilon)
+\]
+
+\mini{PPO objective}
+\[
+\mathcal L_{\mathrm{PPO}}
+=
+\E_{y\sim p_{\theta_{\mathrm{old}}}}
+\left[
+\min\left(\rho A,\bar\rho A\right)
+\right]
+\]
+\begin{itemize}
+\item Sample reuse via importance sampling.
+\item Advantage weighting.
+\item Clipping stabilizes policy updates.
+\end{itemize}
+
+\mini{GRPO}
+\[
+\mu=\operatorname{mean}(r_i),
+\qquad
+\sigma=\operatorname{std}(r_i),
+\qquad
+A_i=\frac{r_i-\mu}{\sigma}
+\]
+\begin{itemize}
+\item Same PPO-style clipping, but no learned value model.
+\item Group normalization is convenient when many samples come from one prompt.
+\end{itemize}
+
+\mini{Fast compare}
+\begin{itemize}
+\item \textbf{SFT:} imitate demos.
+\item \textbf{DPO:} fit preferences against reference.
+\item \textbf{PPO:} practical RL workhorse.
+\item \textbf{GRPO:} simpler RL variant with within-group normalization.
+\end{itemize}
+
+\mini{What usually matters}
+\begin{itemize}
+\item supervision quality
+\item reward credit
+\item stability
+\item whether fresh model samples are needed
+\end{itemize}
+
+\end{multicols*}
+
+\newpage
+
+\begin{center}
+\textbf{6.8610 Quiz 2 Cheatsheet}
+\end{center}
+
+\mini{Retriever tradeoffs}\par
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.05}
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}} l l l l l @{}}
+\textbf{Method} & \textbf{Interaction} & \textbf{Precompute} & \textbf{Query cost} & \textbf{Best use} \\
+XE & full \(q\)-\(d\) & none & \(O(N)\) TF calls & rerank \\
+DE & 1 vec/doc & docs offline & \(O(1)\) TF + \(O(N)\) dots & first stage \\
+Late int. & token-level & doc toks offline & small q TF + ANN & middle ground \\
+ANN / IVF & prune candidates & index offline & sublinear-ish shortlist & scale \\
+\end{tabular*}
+
+\begin{multicols*}{4}
+\raggedcolumns
+
+\head{Neural Retrieval}
+\mini{Dual-encoder score}
+\[
+s(q,d)=f(q)^\top g(d)
+\]
+\[
+s^+=s(q,d^+),
+\qquad
+s_i^-=s(q,d_i^-)
+\]
+
+\mini{InfoNCE}
+\[
+\mathcal L_{\InfoNCE}
+=
+-\log
+\frac{
+\exp(s^+/\tau)
+}{
+\exp(s^+/\tau)
++
+\sum_i \exp(s_i^-/\tau)
+}
+\]
+
+\mini{Late interaction / ColBERT}
+\[
+S(q,d)=\sum_i \max_j E_{q_i}^\top E_{d_j}
+\]
+
+\mini{Retrieval reminders}
+\begin{itemize}
+\item Cross-encoders are great rerankers, bad first-stage retrievers.
+\item Hard negatives matter more than easy random negatives.
+\item Single-vector dense retrieval often fails on OOD generalization.
+\item Late interaction keeps precompute \emph{and} token-level matching.
+\item ANN still works: high score needs at least one close token vector.
+\end{itemize}
+
+\columnbreak
+
+\head{RAG}
+\mini{Closed-book} answer from params only.\par
+\mini{Open-book} retrieve docs and answer from evidence.
+
+\mini{RAG factorization}
+\[
+p(a\mid q)=\sum_{d\in\mathcal D} p_\eta(d\mid q)\, p_\theta(a\mid q,d)
+\]
+\[
+\text{practice: approximate over top-}K
+\]
+
+\mini{Reader styles}
+\begin{itemize}
+\item Extractive: predict answer span.
+\item Generative: decode conditioned on retrieved docs.
+\end{itemize}
+
+\mini{Retriever supervision issue}
+\begin{itemize}
+\item Often only \((q,a)\), not gold docs.
+\item Answer-containing doc is only a proxy for usefulness.
+\item Search relevance and answer usefulness are related, not identical.
+\end{itemize}
+
+\mini{Credit assignment}
+\begin{itemize}
+\item Right doc in top-\(K\) + wrong answer \(\Rightarrow\) reader/evidence-use failure.
+\item Latent doc marginalization helps separate retriever success from reader failure.
+\item But hard to initialize; junk top-\(K\) can push memorization; index refresh is costly.
+\end{itemize}
+
+\mini{FiD}
+\begin{itemize}
+\item Encode passages separately.
+\item Decoder attends over all passage encodings.
+\end{itemize}
+
+\columnbreak
+
+\head{Agents}
+\mini{Inference-time scaling}
+\begin{itemize}
+\item More thinking, more samples, or more tool use can improve outcomes.
+\end{itemize}
+
+\mini{Pass@1 vs pass@\(k\)}
+\begin{itemize}
+\item pass@1 = one rollout succeeds.
+\item pass@\(k\) = at least one of \(k\) rollouts succeeds.
+\end{itemize}
+
+\mini{Agent loop}
+\[
+s_t \to a_t \to o_{t+1} \to s_{t+1}
+\]
+
+\mini{Tool use in token space}
+\begin{itemize}
+\item emit tool call
+\item interrupt generation
+\item execute tool
+\item append observation
+\item resume generation
+\end{itemize}
+
+\mini{ReAct vs CodeAct}
+\begin{itemize}
+\item \textbf{ReAct:} interleave reasoning and actions.
+\item \textbf{CodeAct:} act by writing code; more general, more dangerous.
+\end{itemize}
+
+\mini{Long horizon}
+\begin{itemize}
+\item Large envs + persistent state + context rot.
+\item Compaction keeps active context small while preserving task state.
+\item For agents, quality alone is incomplete; mention environment interaction and cost.
+\end{itemize}
+
+\head{LM Programming}
+\mini{Natural-language signatures}
+\begin{itemize}
+\item specify \emph{what}, not model-specific \emph{how}
+\item e.g.\ \texttt{thread -> events, actions}
+\end{itemize}
+
+\mini{Three ingredients}
+\begin{itemize}
+\item code / modular structure
+\item natural-language specs
+\item data / feedback
+\end{itemize}
+
+\columnbreak
+
+\head{Prompt / Program Optimization}
+\mini{Compile intent into}
+\begin{itemize}
+\item prompts
+\item weights (FT / RL)
+\item inference pipeline
+\end{itemize}
+
+\mini{Prompt optimization helps when}
+\begin{itemize}
+\item the base model already has the capability
+\item task decomposition / instruction wording is the issue
+\item we want sample-efficient improvement
+\end{itemize}
+
+\mini{Prompt optimization limits}
+\begin{itemize}
+\item cannot add missing domain knowledge
+\item depends on the model being able to follow improved instructions
+\item complements FT / RL; does not replace them
+\end{itemize}
+
+\mini{Fast intervention map}
+\begin{itemize}
+\item underspecified task \(\Rightarrow\) modularize + signatures + prompt/program optimization
+\item missing knowledge \(\Rightarrow\) retrieval, better data, or weights
+\item long-horizon control \(\Rightarrow\) tools, state management, RL
+\end{itemize}
+
+\head{Tokenization}
+\mini{Representation tradeoff}
+\begin{itemize}
+\item \textbf{byte:} finite vocab, long seqs, poor semantic units
+\item \textbf{word:} short seqs, brittle OOV/morphology/multilinguality
+\item \textbf{subword:} practical middle ground
+\end{itemize}
+
+\mini{Idealized objective}
+\[
+\min_{\Sigma,f}\sum_i |f(x^{(i)})|
+\quad
+\text{s.t. } |\Sigma|=V
+\]
+
+\head{BPE + Friends}
+\mini{BPE}
+\begin{itemize}
+\item start from bytes/chars
+\item merge most frequent adjacent pair repeatedly
+\item store merge list
+\item apply merges greedily at test time
+\end{itemize}
+
+\mini{Pretokenization}
+\begin{itemize}
+\item often forbid merges across spaces / punctuation / digit chunks
+\item ugly but very important in practice
+\end{itemize}
+
+\mini{Other families}
+\begin{itemize}
+\item \textbf{WordPiece:} BPE-like, more likelihood / PMI flavored
+\item \textbf{Unigram LM:} start big, prune low-utility tokens
+\item \textbf{SentencePiece:} framework for BPE / Unigram without whitespace assumptions
+\end{itemize}
+
+\mini{Non-obvious truths}
+\begin{itemize}
+\item Compression \(\neq\) downstream quality.
+\item Vocabulary size effects can be weaker than expected.
+\item Pretokenization choices matter a lot.
+\item No universal tokenizer winner.
+\item Byte-level / tokenizer-free methods are getting stronger again.
+\item Special system/user/assistant tokens stay atomic in chat tuning.
+\end{itemize}
+
+\end{multicols*}
+
+\end{document}
