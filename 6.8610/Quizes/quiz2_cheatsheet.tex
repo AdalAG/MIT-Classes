@@ -1,0 +1,521 @@
+\documentclass[10pt,landscape]{article}
+
+\usepackage[letterpaper,margin=0.18in]{geometry}
+\usepackage{amsmath,amssymb,mathtools,array}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{multicol}
+\usepackage{enumitem}
+
+\pagestyle{empty}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0pt}
+\setlength{\columnsep}{7pt}
+\setlength{\premulticols}{2pt}
+\setlength{\postmulticols}{2pt}
+\setlength{\multicolsep}{2pt}
+\setlength{\abovedisplayskip}{2pt}
+\setlength{\belowdisplayskip}{2pt}
+\setlength{\abovedisplayshortskip}{1pt}
+\setlength{\belowdisplayshortskip}{1pt}
+\setlist[itemize]{leftmargin=*, itemsep=0pt, topsep=1pt, parsep=0pt, partopsep=0pt}
+\setlist[enumerate]{leftmargin=*, itemsep=0pt, topsep=1pt, parsep=0pt, partopsep=0pt}
+
+\makeatletter
+\renewcommand{\section}{\@startsection{section}{1}{0mm}%
+  {-0.6ex plus -.2ex minus -.1ex}%
+  {0.4ex plus .1ex}%
+  {\normalfont\normalsize\bfseries}}
+\renewcommand{\subsection}{\@startsection{subsection}{2}{0mm}%
+  {-0.5ex plus -.2ex minus -.1ex}%
+  {0.2ex plus .1ex}%
+  {\normalfont\small\bfseries}}
+\makeatother
+
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\KL}{\operatorname{KL}}
+\newcommand{\clip}{\operatorname{clip}}
+\newcommand{\InfoNCE}{\operatorname{InfoNCE}}
+\newcommand{\head}[1]{\section*{#1}}
+\newcommand{\mini}[1]{\textbf{#1}}
+\newcommand{\defs}[1]{{\emph{#1}}\par}
+\newcommand{\intuition}[1]{{\scriptsize\emph{Intuition: #1}\par}}
+
+\begin{document}
+\raggedright
+\footnotesize
+
+\begin{center}
+\textbf{6.8610 Quiz 2 Cheatsheet}
+\end{center}
+
+\mini{Question cues:} bottleneck first; watch absolute words (\emph{always}, \emph{only}, \emph{guarantees}, \emph{equivalent}); reject answers by missing property; say quality \emph{and} systems constraint; simplify toy objectives before interpreting them.
+
+\begin{multicols}{3}
+
+\head{Post-Training Flow}
+\[
+\text{pretrain}
+\rightarrow
+\text{mid-train}
+\rightarrow
+\text{SFT}
+\rightarrow
+\text{prefs}
+\rightarrow
+\text{RL}
+\]
+\intuition{Move from broad language knowledge to sharper task behavior and reward optimization.}
+
+\mini{Mid-train}
+\begin{itemize}
+\item Continue next-token prediction on smaller, higher-value data: code, books, technical text, long-context/tool traces.
+\item Shorter ctx can be cheaper early; expand ctx later once basic priors exist.
+\item Later data matters more: better to forget early boilerplate than late high-value data.
+\end{itemize}
+
+\mini{SFT objective}
+\defs{\(\theta=\) params,\; \(\mathcal D=\{(x,y)\}\) demo pairs,\; \(x=\) prompt,\; \(y=\) assistant response.}
+\[
+\max_\theta \sum_{(x,y)\in\mathcal D}\log p_\theta(y\mid x)
+\]
+\intuition{Increase probability of desired assistant completions.}
+\begin{itemize}
+\item Usually mask loss on prompt/user tokens; supervise mainly assistant tokens.
+\item Teaches instruction following, chat format, refusals, response structure.
+\item Extracts latent skills; does not replace pretraining.
+\end{itemize}
+
+\mini{SFT failure modes}
+\begin{itemize}
+\item Label bottleneck.
+\item One gold answer when many would work.
+\item Can teach style of competence more than calibrated truth.
+\item ``I don't know'' is hard from demos alone.
+\end{itemize}
+
+\head{Preference Learning}
+\mini{Setup}
+\defs{\(x=\) prompt,\; \(y_w/y_\ell=\) winner/loser,\; \(p_\theta=\) policy,\; \(p_0=\) reference,\; \(\sigma=\) logistic.}
+
+\mini{Bradley--Terry}
+\defs{\(r_\theta(x,y)=\) learned scalar preference score.}
+\[
+P(y_w\succ y_\ell\mid x)=\sigma(r(x,y_w)-r(x,y_\ell))
+\]
+\intuition{A winner is more likely when its reward exceeds the loser's.}
+\[
+\mathcal L_{\mathrm{BT}}
+=
+-\log \sigma(r_\theta(x,y_w)-r_\theta(x,y_\ell))
+\]
+\intuition{Train the reward model to rank winners above losers.}
+
+\mini{DPO shorthand}
+\[
+\Delta_\theta
+=
+\log\frac{p_\theta(y_w\mid x)}{p_0(y_w\mid x)}
+-
+\log\frac{p_\theta(y_\ell\mid x)}{p_0(y_\ell\mid x)}
+\]
+\intuition{Measure how much more the policy prefers the winner than the loser relative to the reference.}
+\[
+\mathcal L_{\mathrm{DPO}}=-\log \sigma(\lambda\Delta_\theta)
+\]
+\intuition{Push the policy toward preferred answers while keeping it reference-anchored.}
+\begin{itemize}
+\item Uses LM probs relative to reference; no separate reward model required.
+\item Reference model limits drift while satisfying winner/loser constraints.
+\item Pairwise labels are often easier than writing ideal completions.
+\end{itemize}
+
+\mini{Reward parameterization behind DPO}
+\defs{\(\lambda=\) preference scale,\; \(Z(x)=\) prompt-wise partition function.}
+\[
+r_\theta(x,y)
+=
+\lambda\log\frac{p_\theta(y\mid x)}{p_0(y\mid x)}
++ \lambda\log Z(x)
+\]
+\intuition{Treat reward as scaled log-prob improvement over the reference model.}
+
+\mini{If SLiC fits in memory}
+\defs{Here \(\Delta>0\) is a margin, not the DPO \(\Delta_\theta\) above.}
+\[
+\max(0,\Delta+\log p_\theta(y_\ell\mid x)-\log p_\theta(y_w\mid x))
+\]
+\intuition{Enforce a margin so the winner's log-prob beats the loser's.}
+
+\mini{Keep straight}
+\begin{itemize}
+\item SFT = demonstrations.
+\item DPO = preferences + reference.
+\item RL = optimize reward on fresh model samples.
+\end{itemize}
+
+\head{RLHF Basics}
+\mini{Reward-regularized objective}
+\defs{\(x=\) prompt,\; \(y=\) completion,\; \(p_0=\) reference policy,\; \(\lambda=\) KL weight.}
+\[
+J(\theta)
+=
+\E_x\E_{y\sim p_\theta(\cdot\mid x)}[r(x,y)]
+-\lambda \KL(p_\theta\|p_0)
+\]
+\intuition{Maximize reward, but penalize drifting too far from the reference policy.}
+
+\mini{Reward model}
+\defs{\(\phi=\) reward-model params,\; \(h_\phi(x,y)=\) features,\; \(w=\) linear head.}
+\[
+r_\phi(x,y)=w^\top h_\phi(x,y)
+\]
+\intuition{Map each completion to a single learned scalar score.}
+\[
+\max_\phi \log \sigma(r_\phi(x,y_w)-r_\phi(x,y_\ell))
+\]
+\intuition{Fit that score so preferred completions outrank dispreferred ones.}
+
+\mini{Vanilla policy gradient}
+\defs{\(r(x,y)=\) scalar reward.}
+\[
+\nabla_\theta \E_{y\sim p_\theta}[r]
+=
+\E_{y\sim p_\theta}
+\left[\nabla_\theta\log p_\theta(y\mid x)\, r(x,y)\right]
+\]
+\intuition{Increase probability of sampled actions that earned high reward.}
+
+\mini{Value / advantage}
+\[
+V(x)=\E_{y\sim p_\theta}[r(x,y)],
+\qquad
+A(x,y)=r(x,y)-V(x)
+\]
+\intuition{Advantage tells whether a sampled completion was better than expected.}
+\begin{itemize}
+\item Baseline reduces variance; does \emph{not} change expected gradient.
+\item Vanilla PG is unbiased, high variance, on-policy.
+\item Big RL story: learn reward from scarce labels, then use compute on new samples.
+\end{itemize}
+
+\mini{KL-folding approx.}
+\defs{\(r'(x,y)=\) reward after folding the reference-model KL term into the scalar reward.}
+\[
+r'(x,y)=r(x,y)-\log p_\theta(y\mid x)+\log p_0(y\mid x)
+\]
+\intuition{Absorb the KL term into a modified per-sample reward.}
+
+\mini{Tiny cue}
+\begin{itemize}
+\item Equal SFT probs, rewards \(1/0\), \(\beta=\) KL weight \(=1\) \(\Rightarrow\) better response gets prob \(e/(e+1)\).
+\end{itemize}
+
+\head{PPO / GRPO}
+\mini{Importance ratio}
+\defs{\(p_{\theta_{\mathrm{old}}}=\) old policy,\; \(A=\) advantage,\; \(\epsilon=\) clip radius.}
+\[
+\rho(x,y)=\frac{p_\theta(y\mid x)}{p_{\theta_{\mathrm{old}}}(y\mid x)},
+\qquad
+\bar\rho=\clip(\rho,1-\epsilon,1+\epsilon)
+\]
+\intuition{Compare new and old policies, then cap oversized probability changes.}
+
+\mini{PPO objective}
+\[
+\mathcal L_{\mathrm{PPO}}
+=
+\E_{y\sim p_{\theta_{\mathrm{old}}}}
+\left[
+\min\left(\rho A,\bar\rho A\right)
+\right]
+\]
+\intuition{Improve good actions without letting one update move the policy too far.}
+\begin{itemize}
+\item Sample reuse via importance sampling.
+\item Advantage weighting.
+\item Clipping stabilizes policy updates.
+\end{itemize}
+
+\mini{GRPO}
+\defs{\(r_i=\) rewards for samples \(i\) from one prompt,\; \(\mu,\sigma=\) group mean/std.}
+\[
+\mu=\operatorname{mean}(r_i),
+\qquad
+\sigma=\operatorname{std}(r_i),
+\qquad
+A_i=\frac{r_i-\mu}{\sigma}
+\]
+\intuition{Turn raw rewards into within-prompt relative advantages.}
+\begin{itemize}
+\item Same PPO-style clipping, but no learned value model.
+\item Group normalization is convenient when many samples come from one prompt.
+\end{itemize}
+
+\mini{Fast compare}
+\begin{itemize}
+\item \textbf{SFT:} imitate demos.
+\item \textbf{DPO:} fit preferences against reference.
+\item \textbf{PPO:} practical RL workhorse.
+\item \textbf{GRPO:} simpler RL variant with within-group normalization.
+\end{itemize}
+
+\mini{What usually matters}
+\begin{itemize}
+\item supervision quality
+\item reward credit
+\item stability
+\item whether fresh model samples are needed
+\end{itemize}
+
+\end{multicols}
+
+\newpage
+
+\begin{center}
+\textbf{6.8610 Quiz 2 Cheatsheet}
+\end{center}
+
+\mini{Retriever tradeoffs}\par
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.05}
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}} l l l l l @{}}
+\textbf{Method} & \textbf{Interaction} & \textbf{Precompute} & \textbf{Query cost} & \textbf{Best use} \\
+XE & full \(q\)-\(d\) & none & \(O(N)\) TF calls & rerank \\
+DE & 1 vec/doc & docs offline & \(O(1)\) TF + \(O(N)\) dots & first stage \\
+Late int. & token-level & doc toks offline & small q TF + ANN & middle ground \\
+ANN / IVF & prune candidates & index offline & sublinear-ish shortlist & scale \\
+\end{tabular*}
+
+\begin{multicols}{3}
+
+\head{Neural Retrieval}
+\mini{Dual-encoder score}
+\defs{\(q=\) query,\; \(d=\) doc,\; \(d^+=\) positive doc,\; \(d_i^-=\) negative docs.}
+\[
+s(q,d)=f(q)^\top g(d)
+\]
+\intuition{Retrieve by embedding similarity between the query and each document.}
+\[
+s^+=s(q,d^+),
+\qquad
+s_i^-=s(q,d_i^-)
+\]
+\intuition{Name the positive-match score and the negative distractor scores.}
+
+\mini{InfoNCE}
+\defs{\(\tau=\) temperature,\; \(s^+=\) positive score,\; \(s_i^-=\) negative scores.}
+\[
+\mathcal L_{\InfoNCE}
+=
+-\log
+\frac{
+\exp(s^+/\tau)
+}{
+\exp(s^+/\tau)
++
+\sum_i \exp(s_i^-/\tau)
+}
+\]
+\intuition{Make the positive document score beat many negatives in the softmax.}
+
+\mini{Late interaction / ColBERT}
+\defs{\(E_{q_i},E_{d_j}=\) query/doc token embeddings.}
+\[
+S(q,d)=\sum_i \max_j E_{q_i}^\top E_{d_j}
+\]
+\intuition{Each query token takes credit from its best-matching document token.}
+
+\mini{Retrieval reminders}
+\begin{itemize}
+\item Cross-encoders are great rerankers, bad first-stage retrievers.
+\item Hard negatives matter more than easy random negatives.
+\item Single-vector dense retrieval often fails on OOD generalization.
+\item Late interaction keeps precompute \emph{and} token-level matching.
+\item ANN still works: high score needs at least one close token vector.
+\end{itemize}
+
+\head{RAG}
+\mini{Closed-book} answer from params only.\par
+\mini{Open-book} retrieve docs and answer from evidence.
+
+\mini{RAG factorization}
+\defs{\(q=\) query,\; \(a=\) answer,\; \(d=\) doc,\; \(\mathcal D=\) corpus,\; \(p_\eta=\) retriever,\; \(p_\theta=\) reader.}
+\[
+p(a\mid q)=\sum_{d\in\mathcal D} p_\eta(d\mid q)\, p_\theta(a\mid q,d)
+\]
+\intuition{Answer by averaging reader predictions over possible retrieved documents.}
+\[
+\text{practice: approximate over top-}K
+\]
+
+\mini{Reader choice}
+\begin{itemize}
+\item extractive = span; generative = decode over docs
+\end{itemize}
+
+\mini{Retriever supervision}
+\begin{itemize}
+\item Often only \((q,a)\), not gold docs; answer-containing doc is only a proxy.
+\item Search relevance and answer usefulness are related, not identical.
+\end{itemize}
+
+\mini{Credit assignment}
+\begin{itemize}
+\item Right doc in top-\(K\) + wrong answer \(\Rightarrow\) reader/evidence-use failure.
+\item Latent doc marginalization separates retriever success from reader failure; junk top-\(K\) can still push memorization.
+\end{itemize}
+
+\mini{FiD}
+\begin{itemize}
+\item encode passages separately; decoder attends across all
+\end{itemize}
+
+\head{Agents}
+\mini{Inference scaling}
+\begin{itemize}
+\item Parallel: pass@\(k\), best-of-\(n\), self-consistency. Sequential: longer CoT / ``Wait'' forcing.
+\end{itemize}
+
+\mini{Pass@1 vs pass@\(k\)}
+\begin{itemize}
+\item pass@1 = one rollout succeeds.
+\item pass@\(k\) = at least one of \(k\) rollouts succeeds.
+\end{itemize}
+
+\mini{Agent loop}
+\defs{\(s_t=\) state,\; \(a_t=\) action,\; \(o_{t+1}=\) observation.}
+\[
+s_t \to a_t \to o_{t+1} \to s_{t+1}
+\]
+\intuition{Act, observe the environment, update state, and repeat.}
+
+\mini{Tool use}
+\begin{itemize}
+\item emit tool call, execute externally, append observation, continue generation
+\end{itemize}
+
+\mini{ReAct vs CodeAct}
+\begin{itemize}
+\item \textbf{ReAct:} interleave reasoning and actions.
+\item \textbf{CodeAct:} act by writing code; more general, more dangerous.
+\end{itemize}
+
+\mini{Long horizon}
+\begin{itemize}
+\item context rot + stateful environments
+\item compaction keeps active context small while preserving task state
+\item mention environment interaction and cost, not just answer quality
+\end{itemize}
+
+\head{Decoding}
+\mini{Greedy trap}
+\begin{itemize}
+\item local argmax \(\neq\) best full sequence
+\end{itemize}
+
+\mini{Best-of-\(n\)}
+\defs{\(p=\) base policy,\; \(q=\) best-of-\(n\) induced policy,\; \(n=\) number of samples.}
+\[
+\KL(q\|p)\le \log n
+\]
+\intuition{Best-of-\(n\) helps, but policy shift grows only logarithmically with \(n\).}
+\begin{itemize}
+\item sample \(n\) full outputs, keep best by reward/verifier; strong baseline
+\item search error \(\neq\) model error; large policy shift needs exponential \(n\)
+\end{itemize}
+
+\head{Speculative / Contrastive}
+\mini{Speculative}
+\defs{\(p_t=\) target next-token dist,\; \(q_t=\) draft dist,\; \(\alpha=\) accept prob,\; \(A=\) accept rate.}
+\[
+\alpha(x)=\min\left(1,\frac{p_t(x)}{q_t(x)}\right),
+\qquad
+A=1-\tfrac{1}{2}\lVert p_t-q_t\rVert_1
+\]
+\intuition{Accept draft tokens when target agrees; speed rises as draft matches target.}
+\begin{itemize}
+\item draft \(q_t\) proposes, target \(p_t\) verifies; final token law still \(p_t\)
+\item best when draft is close to target; bigger draft can raise acceptance but lose speed
+\end{itemize}
+
+\mini{Contrastive}
+\defs{\(p_t^+=\) expert,\; \(p_t^-=\) amateur,\; \(\lambda=\) contrast penalty.}
+\[
+s_t(x)=\log p_t^+(x)-\lambda\log p_t^-(x)
+\]
+\intuition{Favor tokens the expert likes but the amateur does not over-prefer.}
+\[
+\max_x s_t(x)\equiv \max_x \frac{p_t^+(x)}{(p_t^-(x))^\lambda}
+\]
+\intuition{The same contrastive rule written as a ratio objective.}
+\begin{itemize}
+\item small \(\lambda\): near expert decoding
+\item large \(\lambda\): penalize generic amateur-favored tokens; too large hurts coherence
+\end{itemize}
+
+\head{LM Programming}
+\mini{Natural-language signatures}
+\begin{itemize}
+\item specify \emph{what}, not model-specific \emph{how}; e.g.\ \texttt{thread -> events, actions}
+\end{itemize}
+
+\mini{Three ingredients}
+\begin{itemize}
+\item code / modular structure
+\item natural-language specs
+\item data / feedback
+\end{itemize}
+
+\mini{Compile intent}
+\begin{itemize}
+\item prompts, weights (FT / RL), inference pipeline
+\end{itemize}
+
+\mini{Intervention map}
+\begin{itemize}
+\item underspecified task \(\Rightarrow\) modularize + prompt/program optimization
+\item missing knowledge \(\Rightarrow\) retrieval, data, or weights
+\item prompt optimization cannot add knowledge; it complements FT / RL
+\end{itemize}
+
+\head{Tokenization}
+\mini{Representation tradeoff}
+\begin{itemize}
+\item byte: finite vocab, long seqs
+\item word: short seqs, brittle OOV/morphology
+\item subword: practical middle ground
+\end{itemize}
+
+\mini{Idealized objective}
+\defs{\(\Sigma=\) vocab,\; \(f=\) tokenizer/segmentation fn,\; \(V=\) target vocab size.}
+\[
+\min_{\Sigma,f}\sum_i |f(x^{(i)})|
+\quad
+\text{s.t. } |\Sigma|=V
+\]
+\intuition{Compress the corpus into few tokens while respecting a vocab budget.}
+
+\mini{BPE}
+\begin{itemize}
+\item start from bytes/chars; repeatedly merge most frequent adjacent pair
+\item store merge list; apply merges greedily at test time
+\end{itemize}
+
+\mini{Other families}
+\begin{itemize}
+\item WordPiece: likelihood / PMI flavored
+\item Unigram LM: start big, prune
+\item SentencePiece: BPE / Unigram without whitespace assumptions
+\end{itemize}
+
+\mini{Keep straight}
+\begin{itemize}
+\item pretokenization matters; compression \(\neq\) downstream quality
+\item no universal winner; special chat tokens stay atomic
+\end{itemize}
+
+\end{multicols}
+
+\end{document}

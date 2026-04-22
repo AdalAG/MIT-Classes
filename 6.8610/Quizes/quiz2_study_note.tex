@@ -1,0 +1,1158 @@
+\documentclass[10pt]{article}
+
+\usepackage[top=0.55in, bottom=0.65in, left=0.55in, right=0.55in]{geometry}
+\usepackage{amsmath, amssymb}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{enumitem}
+\usepackage{multicol}
+\usepackage{hyperref}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.35em}
+\setlength{\columnsep}{0.22in}
+\setlist[itemize]{leftmargin=*, topsep=2pt, itemsep=1pt, parsep=0pt}
+\setlist[enumerate]{leftmargin=*, topsep=2pt, itemsep=1pt, parsep=0pt}
+
+\newcommand{\KL}{\operatorname{KL}}
+\newcommand{\clip}{\operatorname{clip}}
+\newcommand{\InfoNCE}{\operatorname{InfoNCE}}
+\newcommand{\softmax}{\operatorname{softmax}}
+\newcommand{\E}{\mathbb{E}}
+\newenvironment{symdefs}{\begin{itemize}[leftmargin=1.1em, topsep=1pt, itemsep=0pt, parsep=0pt]}{\end{itemize}}
+\newcommand{\sym}[2]{\item \textbf{#1}: #2}
+
+\begin{document}
+\small
+
+\begin{center}
+{\Large \textbf{6.8610 Quiz 2 Study Note}}\\
+Spring 2026\\
+Aggregated from Lectures 8--15 in \texttt{6.8610/.quiz2}\\
+Lightly cross-checked against \texttt{6.8610/.quiz2/NLP\_notes.pdf}
+\end{center}
+
+\begin{multicols*}{2}
+\raggedcolumns
+
+\section*{Cheatsheet Recommendations}
+\begin{itemize}
+\item \textbf{Use Side A for post-training.} Write the staged pipeline \texttt{pretrain -> mid-train -> SFT -> preference learning -> RL}, then the core equations for Bradley-Terry / DPO, the reward-maximization objective, and the PPO / GRPO update rules.
+\item \textbf{Use Side B for retrieval and systems.} Put the retrieval tradeoff table \texttt{cross-encoder vs dual-encoder vs late interaction}, the InfoNCE loss, the ColBERT MaxSim score, the RAG factorization, and a tiny ReAct / CodeAct summary.
+\item \textbf{Memorize comparisons, not paper names.} Expect ``why is method A better than B here?'' more than ``what year was paper X?''.
+\item \textbf{High-yield formulas to handwrite:}
+\[
+\mathcal{L}_{\mathrm{DPO}},
+\qquad
+J(\theta)=\E[r]-\lambda \KL,
+\qquad
+\nabla_\theta \E[r]=\E[\nabla_\theta \log p_\theta \, r],
+\]
+\[
+\mathcal{L}_{\InfoNCE},
+\qquad
+S_{\mathrm{ColBERT}}(q,d)=\sum_i \max_j E_{q_i}^{\top} E_{d_j},
+\]
+\[
+p(a \mid q)=\sum_d p(d \mid q)p(a \mid q,d).
+\]
+\item \textbf{High-yield contrasts to handwrite:} SFT vs ranking losses vs RL; cross-encoder vs dual-encoder vs late interaction; closed-book QA vs RAG vs agents; byte-level vs BPE / WordPiece / Unigram.
+\item \textbf{Always reserve space for failure modes.} This course repeatedly asks not just what works, but what breaks: SFT can teach style over truth, DPO can amplify noisy majority preferences, dense retrievers can fail OOD, RAG can memorize if retrieval is bad, agents suffer context rot, and tokenizer compression does not reliably predict downstream quality.
+\item \textbf{Leave a tiny box for elimination logic.} Write one-line reminders such as ``cross-encoder = best interaction, worst latency'', ``DPO = reference model, no separate reward model'', and ``better compression does not imply better downstream performance'' so you can kill distractors quickly.
+\item \textbf{If space is tight, drop examples before dropping objectives.} Keep one anchor example per lecture at most.
+\item \textbf{Do not waste handwritten space on dates, author names, or leaderboard trivia.} Spend it on equations, assumptions, and ``what term does what?'' explanations.
+\end{itemize}
+
+\section*{Question Pattern Cheat Sheet}
+\begin{itemize}
+\item \textbf{Must be true / enough information?} Start from hard constraints: signs, normalization, masking, top-\(K\) truncation, precomputability, and what is or is not conditioned on the prompt or retrieved document. Do not answer from intuition alone.
+\item \textbf{Best design choice?} First identify the real bottleneck: supervision quality, reward credit assignment, query latency, token-level interaction, long-horizon state management, or representation choice.
+\item \textbf{Select all that apply.} Evaluate each option independently. The teaching team likes tempting wrong answers that fail on one precise word such as ``guarantees'', ``equivalent'', ``always'', or ``only''.
+\item \textbf{Simplest plausible model.} Write the lecture formula first, then substitute the new assumption literally. If only some data fraction helps, replace the data term. If only a subset of parameters is effectively available, scale the capacity term too.
+\item \textbf{Discuss all options briefly.} Give the winning reason in one line, then reject each losing option by naming the missing property.
+\item \textbf{Toy derivation?} Expect short algebra where the real point is to isolate the one changing variable, identify a constant, or see what becomes zero after a simplifying assumption.
+\end{itemize}
+
+\section*{Course Throughline}
+\begin{itemize}
+\item Lectures 8--10 explain how a pretrained next-token predictor becomes a useful assistant: better data staging, supervised demonstrations, preference data, and finally reward optimization with RL.
+\item Lectures 11--12 explain how models access external knowledge: first by learning retrieval systems, then by combining retrieval with answer generation.
+\item Lectures 13--14 move from ``model as chatbot'' to ``model as policy inside a system'' with tools, long-horizon interaction, prompt optimization, and modular AI programming abstractions.
+\item Lecture 15 steps back and asks a representation question: before any of the above works, what basic discrete units should text be broken into?
+\item Repeated theme: the right \textbf{inductive bias} often beats naive scaling. This is true for post-training, retrieval structure, agent scaffolding, and tokenization.
+\end{itemize}
+
+\section*{Lecture 8: Post-Training}
+\textbf{Staged recipe:}
+\[
+\text{pretraining}
+\rightarrow
+\text{mid-training}
+\rightarrow
+\text{SFT}
+\rightarrow
+\text{preference learning / RL}.
+\]
+
+\textbf{SFT objective:}
+\[
+\max_\theta \sum_{(x,y)\in \mathcal{D}} \log p_\theta(y \mid x),
+\]
+usually with the loss masked on user tokens so the model is supervised mainly on assistant/output tokens.
+
+\textbf{What mid-training is doing:}
+\begin{itemize}
+\item Continue next-token prediction, but on smaller, more curated data: code, books, technical writing, research papers, Q\&A, long-context or agent-style traces.
+\item Early training can use shorter contexts for compute efficiency; later stages can increase context length once the model already has basic language priors.
+\item High-quality data is scarce, so it is more valuable \emph{after} broad pretraining than before.
+\item Later batches shape the model more strongly, so you would rather the model forget early boilerplate than later high-value technical data.
+\end{itemize}
+
+\textbf{What SFT is doing:}
+\begin{itemize}
+\item It does \emph{not} replace pretraining. It nudges and extracts capabilities already latent in the pretrained model.
+\item It teaches instruction following, chat format, refusal style, and response structure.
+\item Chat templates matter: tokens for system/user/assistant roles are part of the learned behavior.
+\item If a new environment or tool setup appears later, the hope is that natural-language priors make ``post-post-training'' relatively cheap.
+\end{itemize}
+
+\textbf{Why naive SFT is limited:}
+\begin{itemize}
+\item It has a labeling bottleneck: you need prompt/desired-answer pairs.
+\item It often forces one ``gold'' answer even when many answers would have been fine.
+\item It can teach the \textbf{style} of competence without the deeper process that produced the answer.
+\item It can worsen hallucination by pushing the model to sound authoritative rather than calibrated.
+\item ``Say I don't know'' is often hard to teach from demonstrations alone.
+\end{itemize}
+
+\textbf{Exam intuition:} post-training works partly because pretrained models already contain broad language and world priors; later stages are steering those priors, not starting from scratch.
+
+\section*{Lecture 9: Ranking Objectives for Human Feedback}
+\textbf{Setup:}
+\[
+x=\text{prompt/context},
+\qquad
+y_w=\text{winner},
+\qquad
+y_\ell=\text{loser}.
+\]
+
+\textbf{SLiC / margin-ranking idea:}
+\[
+m(x,y_w,y_\ell)
+=
+\Delta(y_w,y_\ell)
++ \log p_\theta(y_\ell \mid x)
+- \log p_\theta(y_w \mid x),
+\]
+\[
+\mathcal{L}_{\mathrm{SLiC}}
+=
+\sum_{x,y_w,y_\ell} \max\!\left(0,m(x,y_w,y_\ell)\right)
++ \lambda \KL(p_\theta \,\|\, p_0).
+\]
+\begin{itemize}
+\item \(\Delta\): required margin; can depend on similarity or task heuristics.
+\item \(p_0\): reference or base model, often the SFT model.
+\end{itemize}
+
+\textbf{Bradley-Terry preference model:}
+\[
+P(y_w \succ y_\ell \mid x)
+=
+\sigma\!\left(r(x,y_w)-r(x,y_\ell)\right).
+\]
+
+\textbf{Bradley-Terry negative log-likelihood:}
+\[
+\mathcal{L}_{\mathrm{BT}}
+=
+-\sum_{x,y_w,y_\ell}
+\log \sigma\!\left(r_\theta(x,y_w)-r_\theta(x,y_\ell)\right).
+\]
+
+\textbf{DPO parameterization:}
+\[
+r_\theta(x,y)
+=
+\lambda \log \frac{p_\theta(y \mid x)}{p_0(y \mid x)}
++ \lambda \log Z(x).
+\]
+
+\textbf{DPO loss:}
+\[
+\mathcal{L}_{\mathrm{DPO}}
+=
+-\sum_{x,y_w,y_\ell}
+\log \sigma\!\left(
+\lambda \log \frac{p_\theta(y_w \mid x)}{p_0(y_w \mid x)}
+-
+\lambda \log \frac{p_\theta(y_\ell \mid x)}{p_0(y_\ell \mid x)}
+\right).
+\]
+
+\textbf{Unlikelihood for unpaired positive/negative data:}
+\[
+\mathcal{L}_{\mathrm{UL}}
+=
+-\sum_{(x,y^+)} \log p_\theta(y^+ \mid x)
+-\sum_{(x,y^-)} \log \left(1-p_\theta(y^- \mid x)\right).
+\]
+
+\begin{itemize}
+\item Ranking losses learn directly from \textbf{annotated responses}, not from new model samples.
+\item Pairwise preference is often easier for humans than writing gold answers from scratch.
+\item Feedback is especially helpful when a model should abstain or say ``I don't know'' rather than confidently imitate a bad pattern.
+\item KL-to-reference prevents the model from satisfying only relative winner/loser orderings while drifting into garbage elsewhere.
+\item DPO does \textbf{not} require a separate reward model; it uses LM probabilities plus a reference model.
+\item KTO is a later variant inspired by asymmetric gain/loss ideas; the lecture treated it as lower priority than DPO.
+\item Caveat: a single reward or preference function is a simplification; real users do not all want the same thing.
+\end{itemize}
+
+\textbf{Exam intuition:} DPO is elegant because it turns preference fitting into a classification-style loss while implicitly targeting a reward-regularized optimum.
+
+\section*{Lecture 10: Reinforcement Learning Objectives}
+\textbf{Why RL at all?} With limited preference data, it may be easier to learn \textbf{what good behavior looks like} than to directly learn the full policy that produces it.
+
+\textbf{Reward-regularized objective:}
+\[
+J(\theta)
+=
+\sum_x
+\E_{y \sim p_\theta(\cdot \mid x)}
+\left[r(x,y)\right]
+-\lambda \KL(p_\theta \,\|\, p_0).
+\]
+
+\textbf{Reward model:}
+\[
+r_\phi(x,y)=w^{\top} h_\phi(x,y),
+\]
+typically ``LM backbone + scalar head'', fit with the same Bradley-Terry likelihood:
+\[
+\max_\phi
+\sum_{x,y_w,y_\ell}
+\log \sigma\!\left(r_\phi(x,y_w)-r_\phi(x,y_\ell)\right).
+\]
+
+\textbf{Vanilla policy-gradient identity:}
+\[
+\nabla_\theta
+\E_{y \sim p_\theta(\cdot \mid x)}[r(x,y)]
+=
+\E_{y \sim p_\theta(\cdot \mid x)}
+\left[
+\nabla_\theta \log p_\theta(y \mid x)\, r(x,y)
+\right].
+\]
+
+\textbf{Interpretation:} sample from the model, score the sample, then do reward-weighted self-fine-tuning. If the reward is \(0/1\), this becomes ``keep the good samples, discard the bad ones''.
+
+\textbf{Folding KL into the reward (useful approximation):}
+\[
+r'(x,y)
+=
+r(x,y)-\log p_\theta(y \mid x)+\log p_0(y \mid x).
+\]
+
+\textbf{Value and advantage:}
+\[
+V(x)=\E_{y \sim p_\theta(\cdot \mid x)}[r(x,y)],
+\qquad
+A(x,y)=r(x,y)-V(x).
+\]
+
+\textbf{Importance ratio for PPO:}
+\[
+\rho(x,y)=\frac{p_\theta(y \mid x)}{p_{\theta_{\mathrm{old}}}(y \mid x)}.
+\]
+
+\textbf{Clipped ratio:}
+\[
+\bar{\rho}(x,y)=\clip(\rho(x,y),1-\epsilon,1+\epsilon).
+\]
+
+\textbf{PPO objective:}
+\[
+\mathcal{L}_{\mathrm{PPO}}
+=
+\E_{y \sim p_{\theta_{\mathrm{old}}}}
+\left[
+\min\!\left(
+\rho(x,y)A(x,y),
+\bar{\rho}(x,y)A(x,y)
+\right)
+\right].
+\]
+
+\textbf{GRPO:}
+for a group of samples \(y_1,\dots,y_n\) from the same prompt,
+\[
+\mu=\operatorname{mean}(r_i),
+\qquad
+\sigma=\operatorname{std}(r_i),
+\qquad
+A_i=\frac{r_i-\mu}{\sigma},
+\]
+then plug \(A_i\) into the same PPO-style clipped objective.
+
+\begin{itemize}
+\item Vanilla PG is unbiased but high variance and on-policy.
+\item Baselines do not change the expectation; they reduce variance.
+\item PPO adds three practical fixes: advantage estimation, sample reuse via importance sampling, and clipping for stability.
+\item GRPO removes the learned value model and uses within-group reward normalization instead; this has become common in reasoning-model training.
+\item The professor's key story: learn the reward from scarce human labels, then use extra compute to optimize that reward on \textbf{new model outputs} with no additional human annotation.
+\end{itemize}
+
+\textbf{Exam intuition:} vanilla PG is the conceptual core; PPO is the practical workhorse; GRPO is the simpler modern variant when many samples per prompt are available.
+
+\section*{Lecture 11: Neural Information Retrieval}
+\textbf{Task:} given query \(q\), corpus \(D\) with \(N\) documents, return top-\(k\) relevant documents quickly.
+
+\textbf{Basic retrieval metrics:}
+\[
+\operatorname{Success@}k
+=
+\mathbf{1}[R_k(q)\cap G(q)\neq \emptyset],
+\]
+\[
+\operatorname{Precision@}k
+=
+\frac{|R_k(q)\cap G(q)|}{k},
+\qquad
+\operatorname{Recall@}k
+=
+\frac{|R_k(q)\cap G(q)|}{|G(q)|}.
+\]
+\begin{symdefs}
+\sym{\(R_k(q)\)}{retrieved top-\(k\) set}
+\sym{\(G(q)\)}{gold relevant set}
+\end{symdefs}
+
+\textbf{Key complexity lens:}
+\begin{itemize}
+\item Cross-encoder: high quality, but \(O(N)\) Transformer calls per query.
+\item Dual-encoder: \(O(1)\) Transformer calls per query, but still \(O(N)\) dot products.
+\item ANN / IVF: heuristic route toward roughly \(O(\sqrt{N})\) candidate scoring under balanced clustering assumptions.
+\end{itemize}
+
+\textbf{Dual-encoder scoring:}
+\[
+s(q,d)=f(q)^{\top}g(d).
+\]
+
+\textbf{InfoNCE contrastive loss:}
+\[
+\mathcal{L}_{\InfoNCE}
+=
+-\log
+\frac{
+\exp(f(q)^{\top}g(d^+)/\tau)
+}{
+\exp(f(q)^{\top}g(d^+)/\tau)
++\sum_i \exp(f(q)^{\top}g(d_i^-)/\tau)
+}.
+\]
+\begin{symdefs}
+\sym{\(d^+\)}{positive document}
+\sym{\(d_i^-\)}{sampled negatives}
+\sym{\(\tau\)}{temperature}
+\end{symdefs}
+
+\textbf{Late interaction / ColBERT score:}
+\[
+S(q,d)=\sum_i \max_j E_{q_i}^{\top} E_{d_j}.
+\]
+\begin{symdefs}
+\sym{\(E_{q_i}\)}{embedding of query token \(i\)}
+\sym{\(E_{d_j}\)}{embedding of document token \(j\)}
+\end{symdefs}
+
+\textbf{IVF sketch:}
+\begin{itemize}
+\item Cluster document vectors into about \(\sqrt{N}\) buckets.
+\item At query time, compare to \(\sqrt{N}\) centroids, then score only docs in the nearest bucket(s), about \(O(\sqrt{N})\) docs if clusters are balanced.
+\end{itemize}
+
+\begin{itemize}
+\item Cross-encoders are great rerankers, not good first-stage retrievers.
+\item Hard negatives matter more than random negatives because random negatives quickly become too easy.
+\item Single-vector dense retrieval often struggles most on \textbf{generalization / OOD robustness}, not just expressivity.
+\item Late interaction is the ``missing middle'': independent precomputable encodings plus fine-grained token-level matching.
+\item ColBERT storage blowup is handled by smaller vectors plus aggressive compression / quantization.
+\item ANN still works for late interaction because a doc can only score highly if at least one of its token vectors gets close to a query token.
+\end{itemize}
+
+\textbf{Exam intuition:} the design move is repeated decomposition: across documents, then between query and document, then across tokens inside a document.
+
+\section*{Lecture 12: Retrieval-Augmented Generation}
+\textbf{Closed-book open-domain QA:}
+answer from model parameters alone.
+
+\textbf{Open-book open-domain QA:}
+store knowledge explicitly in documents and learn to retrieve and use them.
+
+\textbf{RAG factorization:}
+\[
+p(a \mid q)
+=
+\sum_{d \in \mathcal{D}}
+p_\eta(d \mid q)\, p_\theta(a \mid q,d).
+\]
+In practice, this is approximated over top-\(K\) retrieved documents.
+
+\textbf{Reader styles:}
+\begin{itemize}
+\item Extractive reader: predict an answer span from retrieved text.
+\item Generative reader: decoder generates the answer conditioned on retrieved text; can paraphrase or combine evidence across documents.
+\end{itemize}
+
+\textbf{Why closed-book QA is not enough:}
+\begin{itemize}
+\item Parametric knowledge is static.
+\item Provenance is opaque.
+\item Private or fresh corpora may never appear in pretraining.
+\item Using parameters to memorize huge long-tail fact sets may be inefficient.
+\end{itemize}
+
+\textbf{Retriever-supervision problem:}
+\begin{itemize}
+\item Often the dataset gives only \((q,a)\), not gold relevant documents.
+\item Heuristics include: use an existing retriever, ask humans for relevance, or mark answer-containing documents as pseudo-positives.
+\item But search relevance and answer usefulness are related, not identical.
+\end{itemize}
+
+\textbf{Why latent-document marginalization was attractive:}
+\begin{itemize}
+\item Better credit assignment than RL when the retriever found the right doc but the reader still failed.
+\item But it is hard to initialize, can push the reader to memorize answers if top-\(K\) is junk early on, and makes index refresh expensive.
+\end{itemize}
+
+\textbf{Fusion-in-Decoder (FiD):}
+\begin{itemize}
+\item Encode each retrieved passage separately.
+\item Let the decoder attend over all passage encodings together.
+\item This buys long effective context without one giant quadratic joint encoder.
+\end{itemize}
+
+\textbf{Multi-hop / deep research:}
+\begin{itemize}
+\item Earlier benchmarks: multi-hop factoid QA.
+\item Modern framing: ``deep research'' systems that iteratively search, browse, condense evidence, and answer.
+\item Baleen-style systems combat combinatorial explosion via iterative retrieval plus evidence condensation / compaction.
+\item A major lecture pivot: maybe retrieval is best viewed as a \textbf{tool} the LM learns to use in text space, rather than something always trained end-to-end with the generator.
+\end{itemize}
+
+\textbf{Exam intuition:} RAG is fundamentally about \textbf{credit assignment} and \textbf{where knowledge should live}: in weights, in retrieved context, or in a policy that knows how to query tools.
+
+\section*{Lecture 13: Agents and Inference Scaling}
+\textbf{Inference-time scaling idea:}
+some tasks improve if the model is allowed to think longer, sample more trajectories, or use tools before committing to a final answer.
+
+\textbf{Inference-time decoding bottleneck:}
+\begin{itemize}
+\item Training with teacher forcing is parallel across positions, but inference is autoregressive and sequential.
+\item Greedy decoding chooses the best next token locally, but it does \textbf{not} necessarily produce the highest-probability full sequence globally.
+\end{itemize}
+
+\textbf{Parallel vs sequential scaling:}
+\begin{itemize}
+\item \textbf{Parallel scaling:} explore multiple trajectories and keep or aggregate the best ones.
+\item \textbf{Sequential scaling:} spend more budget on a single trajectory, e.g.\ longer chain-of-thought or forcing the model to keep reasoning before stopping.
+\end{itemize}
+
+\textbf{Pass@1 vs pass@\(k\):}
+\begin{itemize}
+\item \textbf{pass@1}: expected accuracy from a single rollout.
+\item \textbf{pass@\(k\)}: success if at least one of \(k\) rollouts solves the task.
+\end{itemize}
+
+\textbf{Best-of-\(n\), self-consistency, and search error:}
+\begin{itemize}
+\item \textbf{Best-of-\(n\):} sample \(n\) complete outputs and keep the best under a score such as model likelihood, a reward model, or a verifier.
+\item \textbf{Self-consistency:} sample multiple reasoning traces and aggregate the final answers, often by majority vote.
+\item \textbf{Search error} means the inference procedure failed to find a good output the model could already score well; \textbf{model error} means the model itself prefers the wrong output.
+\item Best-of-\(n\) is a strong baseline because once full candidates are generated, their scores are easy to evaluate.
+\end{itemize}
+
+\textbf{Best-of-\(n\) distribution shift:}
+If outputs are sorted by reward, the induced best-of-\(n\) distribution is
+\[
+q(x_i)=
+\left(\sum_{j=1}^i p(x_j)\right)^n
+-
+\left(\sum_{j=1}^{i-1} p(x_j)\right)^n.
+\]
+It satisfies
+\[
+\KL(q\|p)\le \log n.
+\]
+So test-time sampling can tilt mass toward high-reward outputs, but achieving a large KL shift from the base policy requires exponentially many samples.
+
+\textbf{Speculative decoding:}
+\begin{itemize}
+\item A small draft model \(q_t(\cdot)\) proposes tokens and the large target model \(p_t(\cdot)\) verifies them in parallel.
+\item A proposed token \(x\) is accepted with probability
+\[
+\alpha(x)=\min\left(1,\frac{p_t(x)}{q_t(x)}\right).
+\]
+\item The final output distribution is still exactly the target distribution \(p_t(\cdot)\), so speculative decoding changes efficiency rather than the distribution being sampled.
+\item The acceptance rate is
+\[
+A(x_{<t})=1-\frac{1}{2}\left\lVert p_t(\cdot)-q_t(\cdot)\right\rVert_1,
+\]
+so speedup is best when the draft stays close to the target.
+\end{itemize}
+
+\textbf{Contrastive decoding:}
+\[
+s_t(x)=\log p_t^+(x)-\lambda \log p_t^-(x)
+\]
+which is equivalent to maximizing
+\[
+\frac{p_t^+(x)}{(p_t^-(x))^\lambda}.
+\]
+\begin{itemize}
+\item The amateur model penalizes generic tokens that it over-prefers.
+\item Small \(\lambda\) behaves close to ordinary expert decoding.
+\item Large \(\lambda\) pushes harder toward expert-distinctive tokens, but if it is too large it can damage coherence by over-penalizing common reasonable words.
+\end{itemize}
+
+\textbf{Agent loop abstraction:}
+\[
+s_t
+\xrightarrow{\text{LM policy}}
+a_t
+\xrightarrow{\text{environment/tool}}
+o_{t+1}
+\rightarrow
+s_{t+1}.
+\]
+
+\textbf{Tool use in token space:}
+\begin{itemize}
+\item Model emits special tool-call syntax.
+\item Generation is interrupted.
+\item External system executes the tool.
+\item Observation is appended to context.
+\item Generation resumes.
+\end{itemize}
+
+\textbf{ReAct vs CodeAct:}
+\begin{itemize}
+\item \textbf{ReAct}: interleave ``thought'' tokens with explicit actions; reasoning can be a no-op action that buys more inference-time compute.
+\item \textbf{CodeAct}: take actions by writing code; much more general, but more dangerous and harder to control.
+\end{itemize}
+
+\textbf{What an agent is in this lecture:}
+\begin{itemize}
+\item Not a sharply defined object category.
+\item A useful abstraction for systems that iteratively pursue goals inside environments.
+\item Strong post-trained LMs can already look agentic if tools and observations are expressed in language.
+\end{itemize}
+
+\textbf{Long-horizon problems:}
+\begin{itemize}
+\item Large environments, especially codebases.
+\item Persistent state changes.
+\item Long contexts cause cost and context rot.
+\item Context condensation / compaction keeps the active context small while preserving enough history to continue.
+\end{itemize}
+
+\textbf{Post-training for agent behavior:}
+\begin{itemize}
+\item Mid-train heavily on high-quality code and tool-use traces.
+\item Train across many environments, not just one.
+\item Use RL on full trajectories when rewards are sparse and long-horizon.
+\item An agent must stay anchored to the \textbf{goal}, not just predict locally likely next tokens.
+\end{itemize}
+
+\textbf{Exam intuition:} this lecture combines two post-training levers after the model already exists: better search / decoding over the same model, and agentic tool use inside an environment. Better search fixes \textbf{search} errors, not \textbf{model} errors; agents add actions, observations, and external state.
+
+\section*{Lecture 14: Language Model Programming}
+\textbf{Main shift:}
+\[
+\text{ad-hoc prompt} \rightarrow \text{reliable AI system}.
+\]
+
+\begin{itemize}
+\item A one-off chatbot interaction is not the same problem as engineering a maintainable, transparent, reliable system that solves the same kind of task over and over.
+\item Symbolic code is useful because it gives reusable modules, explicit dataflow, and clearer contracts.
+\item Natural language is still necessary because many requirements are easiest to specify in English rather than in labels alone.
+\end{itemize}
+
+\textbf{Central abstraction: natural-language signatures.}
+\begin{itemize}
+\item Example mental model: \texttt{email thread -> events, action items}.
+\item The point is to separate \textbf{what} the module should do from \textbf{how} a particular model or inference pipeline currently does it.
+\item This localizes ambiguity inside module boundaries instead of smearing it across one giant fragile prompt.
+\end{itemize}
+
+\textbf{Three ingredients of an AI program:}
+\begin{itemize}
+\item \textbf{Code / modular structure:} how modules compose.
+\item \textbf{Natural-language specs:} task definitions and output contracts.
+\item \textbf{Data / feedback:} edge cases, rewards, and examples of where the first two are insufficient.
+\end{itemize}
+
+\textbf{Compile the intent into optimized artifacts:}
+\begin{itemize}
+\item optimize prompts,
+\item optimize weights with RL or fine-tuning,
+\item optimize the pipeline / inference strategy itself.
+\end{itemize}
+
+\textbf{Prompt optimization themes:}
+\begin{itemize}
+\item Bootstrap useful trajectories and search for prompts that make them reusable.
+\item MIPRO: smarter search over prompt variants instead of naive random search.
+\item TextGrad / GEPA style methods: use an LM to reflect on failures, propose textual fixes, and iteratively evolve prompts.
+\item Prompt optimization can be far more sample-efficient than policy-gradient RL when the model is already strong enough to reason about what went wrong.
+\end{itemize}
+
+\textbf{But prompt optimization is limited:}
+\begin{itemize}
+\item It depends on the model already being capable of following the improved instructions.
+\item It cannot inject missing domain knowledge the model simply does not have.
+\item Hence prompt optimization and RL / fine-tuning are complements, not substitutes.
+\end{itemize}
+
+\textbf{Programming abstraction message:}
+\begin{itemize}
+\item We should not hard-wire every model-specific prompting trick into application logic.
+\item Inference strategies like ReAct should be abstracted so they can compose over arbitrary signatures and be learned / optimized too.
+\item A good abstraction hides model-specific plumbing, just like PyTorch hides low-level tensor kernels.
+\end{itemize}
+
+\textbf{Exam intuition:} this lecture is about moving from ``prompt engineering hacks'' to a declarative view where AI systems are specified at a higher level and then compiled down into prompts, weights, and pipelines.
+
+\section*{Lecture 15: Tokenization}
+\textbf{Representation problem:} unlike images or audio, text does not come with a natural low-level numeric representation whose distances already mean something useful.
+
+\textbf{Byte-level tokenization:}
+\begin{itemize}
+\item Finite vocabulary, so no OOV problem.
+\item But sequences become long.
+\item Byte values are arbitrary with respect to meaning.
+\item Byte-level generation can drift into gibberish because bytes are not word-like units.
+\end{itemize}
+
+\textbf{Word-level tokenization:}
+\begin{itemize}
+\item Shorter sequences and more intuitive units.
+\item But morphology, unseen words, multilingual variation, and even the notion of ``word'' itself make it brittle.
+\end{itemize}
+
+\textbf{Idealized tokenizer objective:}
+\[
+\min_{\Sigma,f}
+\sum_i |f(x^{(i)})|
+\qquad
+\text{subject to } |\Sigma|=V.
+\]
+\begin{symdefs}
+\sym{\(\Sigma\)}{token vocabulary}
+\sym{\(f\)}{tokenization function}
+\sym{\(V\)}{target vocabulary size}
+\end{symdefs}
+
+\textbf{Why this is not solved exactly:}
+\begin{itemize}
+\item A perfect tokenizer would balance compactness and expressivity.
+\item But globally optimal tokenization under natural formulations is intractable, so practical tokenizers use greedy approximations.
+\end{itemize}
+
+\textbf{Byte-Pair Encoding (BPE):}
+\begin{itemize}
+\item Start from bytes / characters.
+\item Repeatedly merge the most frequent adjacent pair.
+\item Store the merge history \(M\).
+\item At test time, apply those learned merges to new text.
+\end{itemize}
+
+\textbf{BPE lesson from the lecture:}
+\begin{itemize}
+\item BPE is a compromise: words are too coarse, bytes are too fine.
+\item It often compresses token count well, but the learned tokens are not guaranteed to be linguistically satisfying.
+\item Greedy longest-available segmentation tends to work well at test time.
+\end{itemize}
+
+\textbf{Pretokenization:}
+\begin{itemize}
+\item Hand-built guardrails often stop merges across spaces, punctuation, and digit chunks.
+\item This is not elegant, but it is practical and important.
+\item Real production tokenizers use heavy regex-based pretokenization.
+\end{itemize}
+
+\textbf{Other classics:}
+\begin{itemize}
+\item \textbf{WordPiece}: BPE-like but merge choice is likelihood / PMI flavored rather than raw count based.
+\item \textbf{Unigram LM}: start with a large vocabulary and prune the least useful tokens.
+\item \textbf{SentencePiece}: framework that supports BPE and Unigram, often useful when whitespace assumptions are undesirable.
+\end{itemize}
+
+\textbf{What the later ``advances'' section argued:}
+\begin{itemize}
+\item Compression alone does \textbf{not} predict downstream performance well.
+\item Vocabulary size effects can be surprisingly weak over a normal range.
+\item Pretokenization choices matter a lot.
+\item No tokenizer clearly dominates all others.
+\item Byte-level / tokenizer-free approaches are becoming more competitive again.
+\item Special tokens for system/user/assistant roles are inserted during instruction tuning and are not split into smaller subwords.
+\end{itemize}
+
+\textbf{Exam intuition:} tokenization is a representation choice, not a solved preprocessing detail. The lecture's conclusion is basically ``we still do not know what the perfect tokenizer should optimize''.
+
+\section*{Common Traps and Invariances}
+\begin{itemize}
+\item \textbf{Lecture 8:} In chat SFT, the loss is usually masked on prompt / user tokens and computed mainly on assistant tokens.
+\item \textbf{Lecture 9:} DPO uses LM probabilities relative to a reference model. It does not require first training a separate reward model and then running RL.
+\item \textbf{Lecture 10:} A baseline changes variance, not the expectation of vanilla policy gradient. PPO clipping is about stable policy updates; GRPO replaces learned value estimates with within-group normalization.
+\item \textbf{Lecture 11:} Cross-encoders maximize interaction but destroy first-stage retrieval latency. Dual-encoders maximize precompute but compress each document to one vector. Late interaction is the middle ground.
+\item \textbf{Lecture 12:} A wrong RAG answer can come from either retrieval failure or reader failure. If the right document is already in top-\(K\), the issue is now credit assignment and evidence use, not document access.
+\item \textbf{Lecture 13:} Greedy decoding is local, not globally sequence-optimal. Best-of-\(n\) buys only logarithmic KL shift in \(n\). Speculative decoding preserves the target distribution, whereas contrastive decoding deliberately changes the decoding objective. Long-horizon agents still need compact state, tool feedback, and goal tracking.
+\item \textbf{Lecture 14:} Prompt optimization can improve instructions and decomposition, but it cannot inject domain knowledge the model does not already have.
+\item \textbf{Lecture 15:} Better compression or fewer tokens does not automatically mean a better language model or better downstream behavior.
+\end{itemize}
+
+\section*{Likely Question Archetypes}
+\begin{itemize}
+\item \textbf{Write or simplify an objective.} Be able to expand a lecture formula on a toy example and say what each term is doing in plain English.
+\item \textbf{Pick the right method under constraints.} The deciding axis is usually latency, precompute, token-level interaction, sample efficiency, or credit assignment.
+\item \textbf{Tell true from false.} Watch for absolute language such as ``guarantees'', ``equivalent'', ``always'', and ``only''.
+\item \textbf{Map a failure mode to the right intervention.} If the issue is instruction ambiguity, think prompt optimization or modularization. If it is missing knowledge, think retrieval, data, or weights. If it is long-horizon control, think tools, state, and RL.
+\item \textbf{Separate search error from model error.} If better inference could rescue the same model, think best-of-\(n\), self-consistency, or search. If the model itself scores the wrong answer higher, search alone will not fix it.
+\item \textbf{Justify a choice by rejecting the others.} The staff likes one-sentence reasons for why the winner works and why each loser misses one required property.
+\item \textbf{Include systems constraints when relevant.} For retrieval and agents, quality alone is not the whole story; mention ANN, precompute, context budget, or environment interaction when needed.
+\end{itemize}
+
+\end{multicols*}
+
+\clearpage
+\section*{Practice Questions and Solutions}
+\footnotesize
+
+\subsection*{Lecture 10 Practice Question (Fall 2024 6.861)}
+\textbf{Question.}
+
+Consider a simplified language model trained using Reinforcement Learning with Human Feedback
+(RLHF). We train the model on only one input prompt: \(x =\) ``What is 6.861?''.
+
+The model generates only two possible responses:
+\begin{enumerate}
+\item \(y_1 =\) ``6.861 is MIT's natural language processing course.''
+\item \(y_2 =\) ``6.861 is 13.722 divided by 2.''
+\end{enumerate}
+
+A reward model assigns scores based on how much each response aligns with human preferences.
+In this case, the first response is more desired, so the following scores are assigned:
+\[
+r_\phi(x, y_1)=1,
+\qquad
+r_\phi(x, y_2)=0.
+\]
+
+The original version of the model, trained through supervised fine-tuning (SFT), considered both
+responses equally valid, so it assigns the following probabilities:
+\[
+P_{\theta_{\mathrm{SFT}}}(y_1 \mid x)=0.5,
+\qquad
+P_{\theta_{\mathrm{SFT}}}(y_2 \mid x)=0.5.
+\]
+
+Recall that the objective of RLHF is to find LM with parameters \(\theta\) that maximizes the following
+objective:
+\[
+J(\theta)=
+\mathbb{E}_{x \sim \mathcal{I}}
+\left[
+\mathbb{E}_{y \sim P_\theta(\cdot \mid x)}
+\left[
+r_\phi(x,y)-\beta \log \frac{P_\theta(y \mid x)}{P_{\theta_{\mathrm{SFT}}}(y \mid x)}
+\right]
+\right]
+\]
+where \(\mathcal{I}\) is some fixed distribution. In this case, \(\mathcal{I}\) places all its mass on the single prompt \(x\) given
+at the beginning of this problem.
+
+Your goal is to solve this objective, i.e., find the probabilities \(P_\theta(y_1 \mid x)\) and \(P_\theta(y_2 \mid x)\) that maxi-
+mize the objective function.
+
+\begin{enumerate}
+\item[(a)] (2 points) Let \(p_1 = P_\theta(y_1 \mid x)\) and \(p_2 = P_\theta(y_2 \mid x)\). Write the objective \(J(\theta)\) in terms of \(p_1\), \(p_2\),
+and \(\beta\).
+\item[(b)] (1 point) Let \(\beta = 1\). Express \(J(\theta)\) as a function of \(p_1\) only.
+\item[(c)] (3 points) Find the value of \(p_1\) that maximizes \(J(\theta)\) (for \(\beta = 1\)).
+\end{enumerate}
+
+\textbf{Solution.}
+
+\textbf{(a)} Since there is only one input \(x\), the outer expectation simplifies to evaluating
+at \(x\). The inner expectation over \(y\) becomes a sum over the two possible responses \(y_1\) and
+\(y_2\):
+\[
+J(\theta)
+=
+\mathbb{E}_{y \sim P_\theta(\cdot \mid x)}
+\left[
+r_\phi(x,y)-\beta \log \frac{P_\theta(y \mid x)}{P_{\theta_{\mathrm{SFT}}}(y \mid x)}
+\right]
+\]
+\[
+=
+\sum_y
+P_\theta(y \mid x)
+\left[
+r_\phi(x,y)-\beta \log \frac{P_\theta(y \mid x)}{P_{\theta_{\mathrm{SFT}}}(y \mid x)}
+\right].
+\]
+
+Substituting the known values:
+\[
+J(\theta)
+=
+p_1\left[1-\beta \log \frac{p_1}{0.5}\right]
++
+p_2\left[0-\beta \log \frac{p_2}{0.5}\right]
+\]
+\[
+=
+p_1(1-\beta(\ln p_1-\ln 0.5))-\beta p_2(\ln p_2-\ln 0.5)
+\]
+\[
+=
+p_1-\beta p_1 \ln p_1+\beta p_1 \ln 0.5-\beta p_2 \ln p_2+\beta p_2 \ln 0.5
+\]
+\[
+=
+p_1-\beta(p_1 \ln p_1+p_2 \ln p_2)+\beta(p_1+p_2)\ln 0.5.
+\]
+
+\textbf{(b)} Since \(p_2 = 1-p_1\), we substitute into \(J(\theta)\):
+\[
+J(\theta)
+=
+p_1-(p_1 \ln p_1+(1-p_1)\ln(1-p_1))+\ln 0.5
+\]
+\[
+=
+p_1-p_1\ln p_1-(1-p_1)\ln(1-p_1)+\ln 0.5.
+\]
+
+\textbf{(c)} We first compute the derivative of \(J\) with respect to \(p_1\):
+\[
+\frac{dJ}{dp_1}
+=
+1-(\ln p_1+1)-(-\ln(1-p_1)-1)
+\]
+\[
+=
+1-\ln p_1-1+\ln(1-p_1)+1
+\]
+\[
+=
+-\ln p_1+\ln(1-p_1)+1.
+\]
+
+We can then set the derivative to 0 and simplify:
+\[
+-\ln p_1+\ln(1-p_1)+1=0
+\]
+\[
+\ln p_1-\ln(1-p_1)=1
+\]
+\[
+\ln \left(\frac{p_1}{1-p_1}\right)=1
+\]
+\[
+\frac{p_1}{1-p_1}=e
+\]
+\[
+p_1=\frac{e}{e+1}.
+\]
+
+\subsection*{Lecture 8 Practice Question (Spring 2026 Quiz 1)}
+\textbf{Question.}
+
+Which of the following statements about language model pretraining are true? Select all that
+apply.
+\begin{enumerate}
+\item[(a)] An autoregressive language model factorizes the joint probability as
+\[
+P(x_1,\ldots,x_n)=\prod_{t=1}^n P(x_t \mid x_{<t}),
+\]
+and can therefore compute the exact probability of any text sequence.
+\item[(b)] In Supervised Fine-Tuning (SFT), the training loss
+\[
+L_{\mathrm{SFT}}(\theta)=-\frac{1}{T}\sum_{t=1}^T \log p_\theta(y_t^\ast \mid x, y_{<t}^\ast)
+\]
+is typically computed on both prompts \(x\) and continuations \(y^\ast\).
+\item[(c)] Consider a masked language model that predicts a single given complete left and right
+contexts (i.e. to predict \(p(x_i \mid x_1,\ldots,x_{i-1},x_{i+1},\ldots x_n)\). Models pretrained for this masked
+objective are functionally equivalent to ordinary (autoregressive, ``decoder only'' LMs): both
+can directly compute the joint probability \(P(x_1,\ldots,x_n)\).
+\item[(d)] Lower perplexity on a held-out test set guarantees better performance on all downstream
+NLP tasks such as text classification, question answering, and summarization.
+\end{enumerate}
+
+\textbf{Solution.} \((a)\) ONLY.
+
+\textbf{Explanation.} Choice (b) is false because in modern chat SFT, the loss is usually masked on prompt / user tokens and computed mainly on assistant continuations.
+
+\subsection*{Lecture 9 Practice Question}
+\textbf{Question.}
+
+Which of the following statements about preference learning are true? Select all that apply.
+\begin{enumerate}
+\item[(a)] Under the Bradley-Terry model,
+\[
+P(y_w \succ y_\ell \mid x)=\sigma(r(x,y_w)-r(x,y_\ell)).
+\]
+\item[(b)] DPO requires first training a separate scalar reward model and then running RL against that reward model.
+\item[(c)] Using a reference model in DPO helps prevent the learned policy from drifting too far while satisfying only relative winner/loser constraints.
+\item[(d)] Pairwise preference labels can be easier for humans to provide than writing ideal outputs from scratch.
+\end{enumerate}
+
+\textbf{Solution.} \((a),(c),(d)\).
+
+\textbf{Explanation.} Choice (b) is false because DPO works directly with LM probabilities relative to a reference model rather than first fitting a separate reward model and then doing RL.
+
+\subsection*{Lecture 11 Practice Question}
+\textbf{Question.}
+
+You need a first-stage retriever over tens of millions of documents. At query time, you can afford
+only a small amount of query-dependent Transformer compute, but you still want token-level
+query-document interaction so that a rare query term can match the best token inside each document
+instead of compressing the whole document to one vector. Which single design choice best fits
+these constraints?
+\begin{enumerate}
+\item[(a)] Score every candidate document with a cross-encoder.
+\item[(b)] Use a dual-encoder with one embedding per document.
+\item[(c)] Use a late-interaction retriever such as ColBERT with precomputed document token embeddings.
+\item[(d)] Skip retrieval and use a closed-book language model.
+\end{enumerate}
+
+\textbf{Solution.} \((c)\).
+
+\textbf{Explanation.} A cross-encoder gives the richest interaction but is too expensive as a first-stage retriever. A dual-encoder is fast but loses token-level matching by collapsing each document to one vector. Late interaction preserves per-token matching while still allowing offline document encoding.
+
+\subsection*{Lecture 12 Practice Question}
+\textbf{Question.}
+
+A RAG system retrieves top-\(K\) documents for each query. On many examples, a supporting
+document is already present in the retrieved top-\(K\), but the final answer is still wrong because
+the generator fails to use that evidence correctly. Which statement best explains why latent-document
+marginalization can be attractive during training?
+\begin{enumerate}
+\item[(a)] It gives better credit assignment between retriever and reader than only rewarding the final answer.
+\item[(b)] It guarantees the reader will not memorize answers in its parameters.
+\item[(c)] It removes the need for a good retriever initialization.
+\item[(d)] It makes refreshing the document index cheaper.
+\end{enumerate}
+
+\textbf{Solution.} \((a)\).
+
+\textbf{Explanation.} When the right document is retrieved but the answer is still wrong, the training signal should separate retriever success from reader failure. That is the credit-assignment advantage. The other choices are either false guarantees or describe drawbacks rather than benefits.
+
+\subsection*{Lecture 13 Practice Question}
+\textbf{Question.}
+
+You are building an agent for long-horizon software tasks over a large codebase. The model often
+starts correctly but performance degrades as the raw interaction history grows, and simply using the
+full history is too expensive. Which intervention best targets the core failure mode?
+\begin{enumerate}
+\item[(a)] Keep the entire uncompressed interaction history in the active prompt at all times.
+\item[(b)] Use context condensation / compaction so only task-relevant state stays active while older details are summarized externally.
+\item[(c)] Remove tool use so the model never leaves pure text generation.
+\item[(d)] Lower \(k\) in pass@\(k\) evaluation so the agent commits faster.
+\end{enumerate}
+
+\textbf{Solution.} \((b)\).
+
+\textbf{Explanation.} The lecture's core issue is context rot in long-horizon tasks. Compaction preserves goal-relevant state while keeping cost manageable. The other choices either ignore the failure mode or reduce capability.
+
+\subsection*{Lecture 13 Practice Question 2}
+\textbf{Question.}
+
+Which of the following statements about inference-time decoding are true? Select all that apply.
+\begin{enumerate}
+\item[(a)] Greedy decoding always returns the highest-probability complete sequence under an autoregressive language model.
+\item[(b)] For best-of-\(n\), the induced distribution \(q\) can shift mass toward high-reward outputs, but the bound
+\[
+\KL(q\|p)\le \log n
+\]
+means that very large shifts require exponentially many samples.
+\item[(c)] Speculative decoding accelerates generation by changing the final token distribution from the target model to an interpolation between the draft and target models.
+\item[(d)] If the draft and target next-token distributions are close in total variation distance, speculative decoding should have a higher token acceptance rate.
+\item[(e)] In contrastive decoding, increasing \(\lambda\) penalizes tokens favored by the amateur more strongly, and if \(\lambda\) is too large coherence can suffer.
+\end{enumerate}
+
+\textbf{Solution.} \((b),(d),(e)\).
+
+\textbf{Explanation.} Choice (a) is false because greedy decoding is a local next-token decision rule, not a global sequence optimizer. Choice (b) is true: best-of-\(n\) can move probability toward better outputs, but only logarithmically in \(n\) in KL. Choice (c) is false because speculative decoding preserves the exact target distribution; it changes efficiency, not the distribution being sampled. Choice (d) is true because
+\[
+A(x_{<t})=1-\frac{1}{2}\left\lVert p_t(\cdot)-q_t(\cdot)\right\rVert_1,
+\]
+so closer draft and target distributions imply higher acceptance. Choice (e) is true because larger \(\lambda\) increases the amateur penalty in
+\[
+s_t(x)=\log p_t^+(x)-\lambda\log p_t^-(x),
+\]
+which can improve distinctiveness at first but eventually over-penalize common reasonable tokens.
+
+\subsection*{Lecture 14 Practice Question}
+\textbf{Question.}
+
+You have a strong base model for a repeated extraction workflow. The main problem is not missing
+world knowledge; it is that the instructions and output contract are underspecified, and the same
+task must be solved reliably over many inputs. Which first intervention is most aligned with the
+lecture?
+\begin{enumerate}
+\item[(a)] Pretrain the model longer on generic web text.
+\item[(b)] Use modular natural-language signatures and prompt / program optimization over that pipeline.
+\item[(c)] Start with RL from sparse end-to-end reward as the default first step.
+\item[(d)] Collapse everything into one giant prompt so all context is visible at once.
+\end{enumerate}
+
+\textbf{Solution.} \((b)\).
+
+\textbf{Explanation.} Lecture 14 emphasizes turning fragile prompting into reusable modules with explicit input-output contracts, then optimizing prompts or programs at that abstraction level. Pretraining addresses missing knowledge, not underspecified task interfaces.
+
+\subsection*{Lecture 15 Practice Question 1 (6.461 Fall 2025)}
+\textbf{Question.}
+
+Determine whether each statement below is true or false.
+\begin{enumerate}
+\item There are no out-of-vocabulary items in a corpus tokenized with BPE.
+\item Consider this problem: given a corpus \(C\) and a limit \(K\) on the vocabulary size, how can we
+choose up to \(K\) tokens and segment \(C\) into as few tokens as possible? We have a polynomial
+time algorithm (with respect to \(K\) and \(|C|\)) that solves this problem.
+\item Suppose we do BPE with pretokenization, making sure merges don't cross word boundaries.
+Doing BPE enough times will eventually result in a training corpus that has length 1.
+\end{enumerate}
+
+\textbf{Solution.}
+\begin{enumerate}
+\item True.
+\item False.
+\item False.
+\end{enumerate}
+
+\textbf{Explanation.}
+\begin{enumerate}
+\item BPE avoids OOV by falling back to the base vocabulary used to build the tokenizer.
+\item The underlying ``pick up to \(K\) tokens and segment the corpus as short as possible'' problem is not known to have a polynomial-time exact solution; in the course notes it is treated as intractable / NP-complete.
+\item With pretokenization, merges do not cross word boundaries, so repeated merging cannot collapse a multi-pretoken corpus into one giant token.
+\end{enumerate}
+
+\subsection*{Lecture 15 Practice Question 2 (6.461 Fall 2025)}
+\textbf{Question.}
+
+Let \(\Sigma_0 = \{a,b,\ldots,y,z,\text{space}\}\) be the base token vocabulary (i.e., only lowercase letters and the space
+token). Further \(\Sigma_k\) be the BPE tokenization vocabulary after \(k\) merge steps, starting with the
+base vocabulary. We thus have
+\[
+|\Sigma_0|=27,
+\qquad
+|\Sigma_k|=27+k.
+\]
+
+Let \(f_k : \Sigma_0^\ast \to \Sigma_k^\ast\) be the corresponding tokenization function. Given a corpus of text \(D\) let \(f_k(D)\)
+be the tokenized corpus, and further let \(|f_k(D)|\) be the length of the corpus after tokenization.
+
+\begin{enumerate}
+\item[(a)] [2 points] Define a metric \(C_k(D)\) that captures the total size of the BPE vocabulary and the
+corpus \(D\) under tokenization \(f_k\). Concretely, we have
+\[
+C_k(D)=|\Sigma_k|+|f_k(D)|.
+\]
+
+Suppose \(D_{\mathrm{training}}\) is the training dataset on which the BPE vocabulary was learned. Can we
+ever have the following?
+\[
+C_{k+1}(D_{\mathrm{training}}) > C_k(D_{\mathrm{training}})
+\]
+If yes, provide an example. If not, argue why the above is not possible.
+
+\item[(b)] [2 points] Consider the following text corpus \(D_{\mathrm{training}}\) for training your tokenizer.
+\[
+\texttt{banana banana ba}
+\]
+
+\begin{enumerate}
+\item[(i)] Suppose we perform two iterations of BPE on the above corpus, making sure that the
+byte pairs do not cross word boundaries. What are the new tokens (i.e., byte pairs) that
+are added? (If there are byte pairs with equal counts, you should take the byte pair that
+occurs first in the dataset.)
+\item[(ii)] Find an alternative sequence of two merges such that the length of the tokenized dataset
+under this tokenization is smaller than the one found via above.
+\end{enumerate}
+
+\item[(c)] [2 points] Suppose we train two language models. The first language model, \(p_{\mathrm{char}}\), is trained
+over raw character tokens. The second model, \(p_{\mathrm{bpe}}\), is trained over a BPE-tokenized corpus
+with the corresponding tokenization function \(f\). The perplexities of the respective models on
+a held-out test set \(D_{\mathrm{test}}\) are found to be:
+\[
+\mathrm{perplexity}_{\mathrm{char}}
+=
+\exp\left(
+-\frac{1}{|D_{\mathrm{test}}|}\log p_{\mathrm{char}}(D_{\mathrm{test}})
+\right)
+=
+\exp(2),
+\]
+\[
+\mathrm{perplexity}_{\mathrm{bpe}}
+=
+\exp\left(
+-\frac{1}{|f(D_{\mathrm{test}})|}\log p_{\mathrm{bpe}}(f(D_{\mathrm{test}}))
+\right)
+=
+\exp(6).
+\]
+
+Which is a better language model, assuming \(|D_{\mathrm{test}}| = 400\) and \(|f(D_{\mathrm{test}})| = 100\)?
+\[
+p_{\mathrm{char}}
+\qquad
+p_{\mathrm{bpe}}
+\qquad
+\text{It is not possible to tell from the above information.}
+\]
+Explain your answer.
+\end{enumerate}
+
+\textbf{Solution.}
+
+\textbf{(a)} No. At each iteration, we add at most one item to the vocabulary, and the training set
+length decreases by at least 1.
+
+\textbf{Explanation.} Since \(C_k(D)=|\Sigma_k|+|f_k(D)|\), one merge changes the two pieces by \(+1\) and at most \(-1\) or better, so \(C_{k+1}(D_{\mathrm{training}})\le C_k(D_{\mathrm{training}})\).
+
+\textbf{(b)(i)}
+\[
+\texttt{an}
+\]
+\[
+\texttt{ban}
+\]
+
+\textbf{(b)(ii)}
+\[
+\texttt{na}
+\]
+\[
+\texttt{ba}
+\]
+
+\textbf{Explanation.} This is a nice reminder that greedy BPE is only a local heuristic. A merge sequence that is not chosen greedily at step 1 can still produce a shorter corpus after the same total number of merges.
+
+\textbf{(c)} \(p_{\mathrm{bpe}}\) is better because the negative log-likelihood of the test set, i.e.,
+\[
+\log(\mathrm{perplexity}) \times \text{length of dataset},
+\]
+is lower.
+
+\textbf{Explanation.} Per-token perplexity depends on the tokenizer's unit of prediction, so the fair comparison is total log-probability of the same raw test text after accounting for tokenized length.
+
+\end{document}
