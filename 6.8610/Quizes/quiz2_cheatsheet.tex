@@ -40,6 +40,7 @@
 \newcommand{\head}[1]{\section*{#1}}
 \newcommand{\mini}[1]{\textbf{#1}}
 \newcommand{\defs}[1]{{\emph{#1}}\par}
+\newcommand{\intuition}[1]{{\scriptsize\emph{Intuition: #1}\par}}
 
 \begin{document}
 \raggedright
@@ -65,6 +66,7 @@
 \rightarrow
 \text{RL}
 \]
+\intuition{Move from broad language knowledge to sharper task behavior and reward optimization.}
 
 \mini{Mid-train}
 \begin{itemize}
@@ -78,6 +80,7 @@
 \[
 \max_\theta \sum_{(x,y)\in\mathcal D}\log p_\theta(y\mid x)
 \]
+\intuition{Increase probability of desired assistant completions.}
 \begin{itemize}
 \item Usually mask loss on prompt/user tokens; supervise mainly assistant tokens.
 \item Teaches instruction following, chat format, refusals, response structure.
@@ -101,11 +104,13 @@
 \[
 P(y_w\succ y_\ell\mid x)=\sigma(r(x,y_w)-r(x,y_\ell))
 \]
+\intuition{A winner is more likely when its reward exceeds the loser's.}
 \[
 \mathcal L_{\mathrm{BT}}
 =
 -\log \sigma(r_\theta(x,y_w)-r_\theta(x,y_\ell))
 \]
+\intuition{Train the reward model to rank winners above losers.}
 
 \mini{DPO shorthand}
 \[
@@ -115,9 +120,11 @@ P(y_w\succ y_\ell\mid x)=\sigma(r(x,y_w)-r(x,y_\ell))
 -
 \log\frac{p_\theta(y_\ell\mid x)}{p_0(y_\ell\mid x)}
 \]
+\intuition{Measure how much more the policy prefers the winner than the loser relative to the reference.}
 \[
 \mathcal L_{\mathrm{DPO}}=-\log \sigma(\lambda\Delta_\theta)
 \]
+\intuition{Push the policy toward preferred answers while keeping it reference-anchored.}
 \begin{itemize}
 \item Uses LM probs relative to reference; no separate reward model required.
 \item Reference model limits drift while satisfying winner/loser constraints.
@@ -132,12 +139,14 @@ r_\theta(x,y)
 \lambda\log\frac{p_\theta(y\mid x)}{p_0(y\mid x)}
 + \lambda\log Z(x)
 \]
+\intuition{Treat reward as scaled log-prob improvement over the reference model.}
 
 \mini{If SLiC fits in memory}
 \defs{Here \(\Delta>0\) is a margin, not the DPO \(\Delta_\theta\) above.}
 \[
 \max(0,\Delta+\log p_\theta(y_\ell\mid x)-\log p_\theta(y_w\mid x))
 \]
+\intuition{Enforce a margin so the winner's log-prob beats the loser's.}
 
 \mini{Keep straight}
 \begin{itemize}
@@ -155,15 +164,18 @@ J(\theta)
 \E_x\E_{y\sim p_\theta(\cdot\mid x)}[r(x,y)]
 -\lambda \KL(p_\theta\|p_0)
 \]
+\intuition{Maximize reward, but penalize drifting too far from the reference policy.}
 
 \mini{Reward model}
 \defs{\(\phi=\) reward-model params,\; \(h_\phi(x,y)=\) features,\; \(w=\) linear head.}
 \[
 r_\phi(x,y)=w^\top h_\phi(x,y)
 \]
+\intuition{Map each completion to a single learned scalar score.}
 \[
 \max_\phi \log \sigma(r_\phi(x,y_w)-r_\phi(x,y_\ell))
 \]
+\intuition{Fit that score so preferred completions outrank dispreferred ones.}
 
 \mini{Vanilla policy gradient}
 \defs{\(r(x,y)=\) scalar reward.}
@@ -173,6 +185,7 @@ r_\phi(x,y)=w^\top h_\phi(x,y)
 \E_{y\sim p_\theta}
 \left[\nabla_\theta\log p_\theta(y\mid x)\, r(x,y)\right]
 \]
+\intuition{Increase probability of sampled actions that earned high reward.}
 
 \mini{Value / advantage}
 \[
@@ -180,6 +193,7 @@ V(x)=\E_{y\sim p_\theta}[r(x,y)],
 \qquad
 A(x,y)=r(x,y)-V(x)
 \]
+\intuition{Advantage tells whether a sampled completion was better than expected.}
 \begin{itemize}
 \item Baseline reduces variance; does \emph{not} change expected gradient.
 \item Vanilla PG is unbiased, high variance, on-policy.
@@ -191,6 +205,7 @@ A(x,y)=r(x,y)-V(x)
 \[
 r'(x,y)=r(x,y)-\log p_\theta(y\mid x)+\log p_0(y\mid x)
 \]
+\intuition{Absorb the KL term into a modified per-sample reward.}
 
 \mini{Tiny cue}
 \begin{itemize}
@@ -205,6 +220,7 @@ r'(x,y)=r(x,y)-\log p_\theta(y\mid x)+\log p_0(y\mid x)
 \qquad
 \bar\rho=\clip(\rho,1-\epsilon,1+\epsilon)
 \]
+\intuition{Compare new and old policies, then cap oversized probability changes.}
 
 \mini{PPO objective}
 \[
@@ -215,6 +231,7 @@ r'(x,y)=r(x,y)-\log p_\theta(y\mid x)+\log p_0(y\mid x)
 \min\left(\rho A,\bar\rho A\right)
 \right]
 \]
+\intuition{Improve good actions without letting one update move the policy too far.}
 \begin{itemize}
 \item Sample reuse via importance sampling.
 \item Advantage weighting.
@@ -230,6 +247,7 @@ r'(x,y)=r(x,y)-\log p_\theta(y\mid x)+\log p_0(y\mid x)
 \qquad
 A_i=\frac{r_i-\mu}{\sigma}
 \]
+\intuition{Turn raw rewards into within-prompt relative advantages.}
 \begin{itemize}
 \item Same PPO-style clipping, but no learned value model.
 \item Group normalization is convenient when many samples come from one prompt.
@@ -278,11 +296,13 @@ ANN / IVF & prune candidates & index offline & sublinear-ish shortlist & scale \
 \[
 s(q,d)=f(q)^\top g(d)
 \]
+\intuition{Retrieve by embedding similarity between the query and each document.}
 \[
 s^+=s(q,d^+),
 \qquad
 s_i^-=s(q,d_i^-)
 \]
+\intuition{Name the positive-match score and the negative distractor scores.}
 
 \mini{InfoNCE}
 \defs{\(\tau=\) temperature,\; \(s^+=\) positive score,\; \(s_i^-=\) negative scores.}
@@ -298,12 +318,14 @@ s_i^-=s(q,d_i^-)
 \sum_i \exp(s_i^-/\tau)
 }
 \]
+\intuition{Make the positive document score beat many negatives in the softmax.}
 
 \mini{Late interaction / ColBERT}
 \defs{\(E_{q_i},E_{d_j}=\) query/doc token embeddings.}
 \[
 S(q,d)=\sum_i \max_j E_{q_i}^\top E_{d_j}
 \]
+\intuition{Each query token takes credit from its best-matching document token.}
 
 \mini{Retrieval reminders}
 \begin{itemize}
@@ -323,6 +345,7 @@ S(q,d)=\sum_i \max_j E_{q_i}^\top E_{d_j}
 \[
 p(a\mid q)=\sum_{d\in\mathcal D} p_\eta(d\mid q)\, p_\theta(a\mid q,d)
 \]
+\intuition{Answer by averaging reader predictions over possible retrieved documents.}
 \[
 \text{practice: approximate over top-}K
 \]
@@ -366,6 +389,7 @@ p(a\mid q)=\sum_{d\in\mathcal D} p_\eta(d\mid q)\, p_\theta(a\mid q,d)
 \[
 s_t \to a_t \to o_{t+1} \to s_{t+1}
 \]
+\intuition{Act, observe the environment, update state, and repeat.}
 
 \mini{Tool use}
 \begin{itemize}
@@ -396,6 +420,7 @@ s_t \to a_t \to o_{t+1} \to s_{t+1}
 \[
 \KL(q\|p)\le \log n
 \]
+\intuition{Best-of-\(n\) helps, but policy shift grows only logarithmically with \(n\).}
 \begin{itemize}
 \item sample \(n\) full outputs, keep best by reward/verifier; strong baseline
 \item search error \(\neq\) model error; large policy shift needs exponential \(n\)
@@ -409,6 +434,7 @@ s_t \to a_t \to o_{t+1} \to s_{t+1}
 \qquad
 A=1-\tfrac{1}{2}\lVert p_t-q_t\rVert_1
 \]
+\intuition{Accept draft tokens when target agrees; speed rises as draft matches target.}
 \begin{itemize}
 \item draft \(q_t\) proposes, target \(p_t\) verifies; final token law still \(p_t\)
 \item best when draft is close to target; bigger draft can raise acceptance but lose speed
@@ -419,9 +445,11 @@ A=1-\tfrac{1}{2}\lVert p_t-q_t\rVert_1
 \[
 s_t(x)=\log p_t^+(x)-\lambda\log p_t^-(x)
 \]
+\intuition{Favor tokens the expert likes but the amateur does not over-prefer.}
 \[
 \max_x s_t(x)\equiv \max_x \frac{p_t^+(x)}{(p_t^-(x))^\lambda}
 \]
+\intuition{The same contrastive rule written as a ratio objective.}
 \begin{itemize}
 \item small \(\lambda\): near expert decoding
 \item large \(\lambda\): penalize generic amateur-favored tokens; too large hurts coherence
@@ -467,6 +495,7 @@ s_t(x)=\log p_t^+(x)-\lambda\log p_t^-(x)
 \quad
 \text{s.t. } |\Sigma|=V
 \]
+\intuition{Compress the corpus into few tokens while respecting a vocab budget.}
 
 \mini{BPE}
 \begin{itemize}
